@@ -1,6 +1,9 @@
 #include <iostream>
 #include <array>
+#include <numeric>
 #include <unordered_set>
+#include <algorithm>
+#include <numeric>
 
 using namespace std;
 
@@ -13,16 +16,17 @@ struct xy
 struct square
 {
 	char value{};
-	unordered_set<char> remaining_values;
+	array<bool, 9> remaining_values;
 
 	square()
 	{
-		remaining_values = { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+		remaining_values.fill(true);
 	}
 
 	square(char c)
 	{
 		value = c;
+		remaining_values.fill(false);
 	}
 };
 
@@ -68,7 +72,7 @@ class solver
 					continue;
 
 				//cerr << " ." << value;
-				grid[it_row][it_col].remaining_values.erase(value);
+				grid[it_row][it_col].remaining_values[value - 1] = false;
 			}
 		}
 
@@ -85,7 +89,7 @@ class solver
 
 			//cerr << " -" << value;
 
-			grid[row][it_col].remaining_values.erase(value);
+			grid[row][it_col].remaining_values[value - 1] = false;
 		}
 
 		//cerr << endl;
@@ -101,7 +105,7 @@ class solver
 
 			//cerr << " -" << value;
 
-			grid[it_row][col].remaining_values.erase(value);
+			grid[it_row][col].remaining_values[value - 1] = false;
 		}
 
 		//cerr << endl;
@@ -123,10 +127,25 @@ class solver
 			{
 				for (int col = 0; col < 9; col++)
 				{
-					if (grid[row][col].remaining_values.size() == 1)
+					char sum{};
+					char value{};
+					for (char i = 0; i < 9; ++i)
 					{
-						grid[row][col].value = *grid[row][col].remaining_values.cbegin();
-						grid[row][col].remaining_values.clear();
+						if (grid[row][col].remaining_values[i] == 0)
+							continue;
+
+						sum++;
+
+						if (sum > 1)
+							break;
+
+						value = i + 1;
+					}
+
+					if (sum == 1)
+					{
+						grid[row][col].value = value;
+						grid[row][col].remaining_values.fill(false);
 						again = true;
 					}
 				}
@@ -179,18 +198,24 @@ class solver
 
 	bool find_easy_square(grid_t const& grid, xy& easy)
 	{
-		int max = 100;
+		char max = 100;
 		for (int row = 0; row < 9; row++)
 		{
 			for (int col = 0; col < 9; col++)
 			{
-				if (grid[row][col].remaining_values.size() == 0)
+				if (grid[row][col].value != 0)
 					continue;
 
-				if (grid[row][col].remaining_values.size() >= max)
+				const char sum = std::accumulate(
+					grid[row][col].remaining_values.cbegin(),
+					grid[row][col].remaining_values.cend(),
+					0,
+					[](char acc, char more) {return acc + more; });
+
+				if (sum >= max)
 					continue;
 
-				max = grid[row][col].remaining_values.size();
+				max = sum;
 				easy = { col, row };
 			}
 		}
@@ -213,9 +238,13 @@ public:
 
 		//cerr << easy.x << ' ' << easy.y << endl;
 		auto values = grid[easy.y][easy.x].remaining_values;
-		grid[easy.y][easy.x].remaining_values.clear();
-		for (auto value : values)
+		grid[easy.y][easy.x].remaining_values.fill(false);
+		for (char i = 0; i < size(values); ++i)
 		{
+			if (values[i] == false)
+				continue;
+
+			const char value = i + 1;
 			grid_t mutation = grid;
 			mutation[easy.y][easy.x].value = value;
 			if (traverse(mutation) == true)
@@ -232,7 +261,7 @@ public:
 	}
 };
 
-#ifdef CODINGAME
+#ifndef WITHIN_VS
 int main()
 {
 	grid_t grid;
@@ -244,7 +273,7 @@ int main()
 			char c;
 			cin >> c;
 			if (c != '0')
-				grid[row][col] = square(c);
+				grid[row][col] = square(c - '0');
 		}
 		cin.ignore();
 	}
@@ -257,9 +286,9 @@ int main()
 	{
 		for (int col = 0; col < 9; col++)
 		{
-			cout << grid[row][col].value + '0';
+			cout << char(grid[row][col].value + '0');
 		}
 		cout << endl;
 	}
-}
+			}
 #endif

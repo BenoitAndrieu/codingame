@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 
+#define WITHIN_VS
 #include "sudoku-solver.h"
 
 TEST(SUDOKU_SOLVER, VERY_EASY)
