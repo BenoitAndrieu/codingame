@@ -27,6 +27,9 @@
     <ClCompile Include="medium\sudoku_solver_ut.cpp">
       <Filter>Source Files\medium</Filter>
     </ClCompile>
+    <ClCompile Include="challenges\2024-winter_ut.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -34,6 +37,9 @@
     </ClInclude>
     <ClInclude Include="medium\sudoku-solver.h">
       <Filter>Source Files\medium</Filter>
+    </ClInclude>
+    <ClInclude Include="challenges\2024-winter.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
