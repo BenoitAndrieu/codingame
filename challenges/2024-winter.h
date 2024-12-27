@@ -331,14 +331,15 @@ game_t::game_t(inputs& inputs, int height, int width)
 					throw exception();
 				}();
 
-			organ_t organ;
-			organ.type = organ_type;
-			organ.id = organId;
-			organ.position = xy{ x,y };
-			organ.owner = owner;
-			organ.direction = dir;
-			organ.parentId = organParentId;
-			organ.rootId = organRootId;
+			organ_t organ{
+				.owner = owner,
+				.id = organId,
+				.parentId = organParentId,
+				.type = organ_type,
+				.position = xy{ x,y },
+				.direction = dir,
+				.rootId = organRootId,
+			};
 
 			m_players[owner].organs.insert({ organId, organ });
 			m_nextId++;
@@ -404,14 +405,15 @@ struct action_t
 		if (it_player.harvesters_targets.contains(target))
 			throw exception();
 
-		organ_t organ;
-		organ.owner = owner;
-		organ.id = game.nextId()++;
-		organ.parentId = game.grid()[source.y][source.x].organ->id;
-		organ.type = organ_type_to_grow;
-		organ.position = target;
-		organ.direction = direction;
-		organ.rootId = rootId;
+		organ_t organ{
+			.owner = owner,
+			.id = game.nextId()++,
+			.parentId = game.grid()[source.y][source.x].organ->id,
+			.type = organ_type_to_grow,
+			.position = target,
+			.direction = direction,
+			.rootId = rootId,
+		};
 
 		if (cell.protein)
 		{
@@ -438,14 +440,20 @@ struct action_t
 			it_player.proteins[protein_type_t::C] -= 1;
 			it_player.proteins[protein_type_t::D] -= 1;
 			break;
+		case organ_type_t::tentacle:
+			it_player.proteins[protein_type_t::B] -= 1;
+			it_player.proteins[protein_type_t::C] -= 1;
+			break;
 		default:
 			throw exception();
 		}
 
-		cell_t new_cell;
-		new_cell.isWall = false;
-		new_cell.organ = organ;
-		new_cell.protein.reset();
+		cell_t new_cell
+		{
+			.isWall = false,
+			.organ = optional(organ),
+			.protein = optional<protein_type_t>(),
+		};
 		swap(cell, new_cell);
 
 		it_player.organs.insert({ organ.id, organ });
@@ -546,13 +554,20 @@ optional<action_t> organ_t::grow(game_t const& game) const
 		}
 	}
 
-	struct data
+	enum class action_type_t
 	{
+		grow,
+		attack,
+	};
+
+	struct data_t
+	{
+		action_type_t type{};
 		xy position;
 		optional<protein_type_t> protein;
 	};
 
-	multimap<distance_t, data> mmap_distance_to_protein;
+	multimap<distance_t, data_t> mmap_distance_to_protein;
 	for (pair<const protein_type_t, vector<xy>> const& it_protein_type : game.proteins())
 	{
 		for (xy const& it_protein_target : it_protein_type.second)
@@ -564,9 +579,11 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			if (bfs_cell.distance.has_value() == false)
 				continue;
 
-			data d;
-			d.position = it_protein_target;
-			d.protein = it_protein_type.first;
+			data_t d{
+				.type = action_type_t::grow,
+				.position = it_protein_target,
+				.protein = it_protein_type.first,
+			};
 			mmap_distance_to_protein.insert({ bfs_cell.distance.value(), d });
 		}
 	}
@@ -585,16 +602,53 @@ optional<action_t> organ_t::grow(game_t const& game) const
 				if (bfs_cell.distance.value() != 1)
 					continue;
 
-				data d;
-				d.position = xy{ x,y };
-				d.protein = optional<protein_type_t>{};
+				cell_t const& cell = game.grid()[y][x];
+				if (cell.organ.has_value() == true)
+					continue;
+
+				data_t d
+				{
+					.type = action_type_t::grow,
+					.position = xy{ x,y },
+					.protein = optional<protein_type_t>{},
+				};
 
 				mmap_distance_to_protein.insert({ 1, d });
 			}
 		}
+
+		for (pair<const int, player_t> const& it_player : game.players())
+		{
+			if (it_player.first == owner)
+				continue;
+
+			for (pair<const int, organ_t> const& it_organ : it_player.second.organs)
+			{
+				bfs_cell_t const& bfs_cell = bfs[it_organ.second.position.y][it_organ.second.position.x];
+				if (bfs_cell.distance.has_value() == false)
+					continue;
+
+				if (bfs_cell.distance.value() < 2)
+					continue;
+
+				data_t d
+				{
+					.type = action_type_t::attack,
+					.position = it_organ.second.position,
+					.protein = optional<protein_type_t>{},
+				};
+
+				mmap_distance_to_protein.insert({ bfs_cell.distance.value(), d });
+			}
+		}
 	}
 
-	multimap<organ_type_t, action_t> candidates;
+	using priority_t = int;
+	int current_prio = 0;
+	const priority_t grow_tentacle_prio = current_prio++;
+	const priority_t grow_harvester_prio = current_prio++;
+	const priority_t grow_basic_prio = current_prio++;
+	multimap<priority_t, action_t> candidates;
 
 	for (auto const& [it_distance, it_data] : mmap_distance_to_protein)
 	{
@@ -642,46 +696,80 @@ optional<action_t> organ_t::grow(game_t const& game) const
 		if (backtrack.size() <= 1)
 			throw exception();
 
-		if (backtrack.size() == 3)
+		if (backtrack.size() == 3 && it_data.type == action_type_t::grow)
 		{
-			if (game.players().at(owner).proteins.at(protein_type_t::C) == 0
-				|| game.players().at(owner).proteins.at(protein_type_t::D) == 0)
+			if (game.players().at(owner).proteins.at(protein_type_t::C) > 0
+				&& game.players().at(owner).proteins.at(protein_type_t::D) > 0)
+			{
+				action_t grow_harvester
+				{
+					.owner = owner,
+					.rootId = rootId,
+					.fromId = id,
+					.source = *(backtrack.begin() + 2),
+					.target = *(backtrack.begin() + 1),
+					.organ_type_to_grow = organ_type_t::harvester,
+					.direction = grow_harvester.target - grow_harvester.source,
+				};
+				candidates.insert({ grow_harvester_prio, grow_harvester });
+
 				continue;
+			}
+		}
 
-			action_t grow_harvester;
-			grow_harvester.owner = owner;
-			grow_harvester.rootId = rootId;
-			grow_harvester.fromId = id;
-			grow_harvester.source = *(backtrack.begin() + 2);
-			grow_harvester.target = *(backtrack.begin() + 1);
-			grow_harvester.organ_type_to_grow = organ_type_t::harvester;
-			grow_harvester.direction = grow_harvester.target - grow_harvester.source;
-			candidates.insert({ grow_harvester.organ_type_to_grow, grow_harvester });
+		priority_t priority = grow_basic_prio;
 
-			continue;
+		if (it_data.type == action_type_t::attack)
+		{
+			const bool tentacle_enough_resources =
+				game.players().at(owner).proteins.at(protein_type_t::B) > 0
+				&& game.players().at(owner).proteins.at(protein_type_t::C) > 0;
+
+			if (backtrack.size() != 3)
+			{
+				if (tentacle_enough_resources)
+					priority = grow_tentacle_prio;
+			}
+			else
+			{
+				if (tentacle_enough_resources)
+				{
+					action_t grow_tentacle
+					{
+						.owner = owner,
+						.rootId = rootId,
+						.fromId = game.grid()[backtrack.rbegin()->y][backtrack.rbegin()->x].organ->id,
+						.source = *(backtrack.begin() + 2),
+						.target = *(backtrack.begin() + 1),
+						.organ_type_to_grow = organ_type_t::tentacle,
+						.direction = grow_tentacle.target - grow_tentacle.source,
+					};
+					candidates.insert({ grow_tentacle_prio, grow_tentacle });
+
+					continue;
+				}
+				else
+					priority = grow_tentacle_prio;
+			}
 		}
 
 		if (game.players().at(owner).proteins.at(protein_type_t::A) == 0)
 			continue;
 
-		action_t grow_basic;
-		grow_basic.owner = owner;
-		grow_basic.rootId = rootId;
-		grow_basic.fromId = game.grid()[backtrack.rbegin()->y][backtrack.rbegin()->x].organ->id;
-		grow_basic.source = *backtrack.rbegin();
-		grow_basic.target = *(backtrack.rbegin() + 1);
-		grow_basic.organ_type_to_grow = organ_type_t::basic;
-		candidates.insert({ grow_basic.organ_type_to_grow, grow_basic });
+		action_t grow_basic
+		{
+			.owner = owner,
+			.rootId = rootId,
+			.fromId = game.grid()[backtrack.rbegin()->y][backtrack.rbegin()->x].organ->id,
+			.source = *backtrack.rbegin(),
+			.target = *(backtrack.rbegin() + 1),
+			.organ_type_to_grow = organ_type_t::basic,
+		};
+		candidates.insert({ priority, grow_basic });
 	}
 
-	for (auto [it, range_end] = candidates.equal_range(organ_type_t::harvester);
-		it != range_end;
-		++it)
-		return it->second;
-	for (auto [it, range_end] = candidates.equal_range(organ_type_t::basic);
-		it != range_end;
-		++it)
-		return it->second;
+	for (pair<const int, action_t> const& it : candidates)
+		return it.second;
 	return {};
 }
 
