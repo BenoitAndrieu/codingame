@@ -4,10 +4,16 @@
 #include <queue>
 #include <stack>
 #include <map>
+#include <set>
+
+#include <optional>
+
 #include <sstream>
 #include <algorithm>
-#include <optional>
+
 #include <limits>
+
+#include <cassert>
 
 using namespace std;
 
@@ -22,12 +28,9 @@ false;
 class game_t;
 struct action_t;
 
-struct xy
+enum class dir_t
 {
-	int x = -1;
-	int y = -1;
-
-	auto operator<=>(const xy&) const = default;
+	up, down, left, right
 };
 
 enum class organ_type_t
@@ -41,7 +44,7 @@ enum class organ_type_t
 	// costs 1B 1C
 	tentacle,
 
-	// costs 1C
+	// costs 1C 1D
 	harvester,
 
 	// costs 1B 1D
@@ -64,10 +67,17 @@ string to_string(organ_type_t value)
 	throw exception();
 }
 
-enum class dir_t
+string to_string(dir_t value)
 {
-	up, down, left, right
-};
+	switch (value)
+	{
+	case dir_t::up: return "N";
+	case dir_t::down: return "S";
+	case dir_t::left: return "W";
+	case dir_t::right: return "E";
+	}
+	throw exception();
+}
 
 enum class protein_type_t
 {
@@ -85,6 +95,63 @@ using id_player_t = int;
 using id_organ_t = int;
 using distance_t = int;
 
+struct xy
+{
+	int x = -1;
+	int y = -1;
+
+	auto operator<=>(const xy&) const = default;
+
+	dir_t operator -(xy other) const
+	{
+		if (x == -1 || y == -1)
+			throw exception();
+		if (other.x == -1 || other.y == -1)
+			throw exception();
+
+		const int d_x = x - other.x;
+		const int d_y = y - other.y;
+
+		switch (d_x)
+		{
+		case -1:
+			if (d_y != 0) throw exception();
+			return dir_t::left;
+		case 1:
+			if (d_y != 0) throw exception();
+			return dir_t::right;
+		}
+
+		switch (d_y)
+		{
+		case -1:
+			if (d_x != 0) throw exception();
+			return dir_t::up;
+		case 1:
+			if (d_x != 0) throw exception();
+			return dir_t::down;
+		}
+
+		throw exception();
+	}
+
+	xy operator + (dir_t dir) const
+	{
+		if (x == -1 || y == -1)
+			throw exception();
+
+		switch (dir)
+		{
+		case dir_t::up: return xy{ .x = x, .y = y - 1 };
+		case dir_t::down:return xy{ .x = x, .y = y + 1 };
+		case dir_t::left:return xy{ .x = x - 1 , .y = y };
+		case dir_t::right:return xy{ .x = x + 1, .y = y };
+		}
+
+		throw exception();
+	}
+};
+
 class organ_t
 {
 public:
@@ -93,7 +160,7 @@ public:
 	id_organ_t parentId = -1;
 	organ_type_t type{};
 	xy position{};
-	dir_t direction{};
+	optional<dir_t> direction{};
 	id_organ_t rootId = -1;
 
 	optional<action_t> grow(game_t const& game) const;
@@ -119,7 +186,7 @@ struct player_t
 	vector<organ_t> roots;
 	map<id_organ_t, organ_t> organs; // including roots
 	map<protein_type_t, int> proteins;
-	id_organ_t nextId = 1;
+	set<xy> harvesters_targets;
 };
 
 class inputs
@@ -130,7 +197,7 @@ public:
 #ifdef WITHIN_VS
 	inputs(vector<string> replay)
 	{
-		for (auto const& it : replay)
+		for (string const& it : replay)
 		{
 			m_replay.push(it);
 		}
@@ -141,7 +208,7 @@ public:
 
 	string get_next()
 	{
-		if (within_vs == false)
+		if constexpr (within_vs == false)
 		{
 			string input;
 			getline(cin, input);
@@ -160,8 +227,18 @@ public:
 
 class game_t
 {
+private:
+	vector<vector<cell_t>> m_grid;
+	map<id_player_t, player_t> m_players;
+	map<protein_type_t, vector<xy>> m_proteins;
+	int m_requiredActionsCount = 0;
+	id_organ_t m_nextId = 1;
+
 public:
 	explicit game_t(inputs& inputs, int height, int width);
+
+	void update();
+	void gather_resources();
 
 	map<id_player_t, player_t> const& players() const { return m_players; }
 	map<id_player_t, player_t>& players() { return m_players; }
@@ -172,16 +249,12 @@ public:
 	vector<vector<cell_t>> const& grid() const { return m_grid; }
 
 	map<protein_type_t, vector<xy>> const& proteins() const { return m_proteins; }
-	map<protein_type_t, vector<xy>> & proteins() { return m_proteins; }
+	map<protein_type_t, vector<xy>>& proteins() { return m_proteins; }
+
+	int& nextId() { return m_nextId; }
 
 	static constexpr id_player_t me_id = 1;
 	static constexpr id_player_t opp_id = 0;
-
-private:
-	vector<vector<cell_t>> m_grid;
-	map<id_player_t, player_t> m_players;
-	map<protein_type_t, vector<xy>> m_proteins;
-	int m_requiredActionsCount = 0;
 };
 
 struct move_t
@@ -250,9 +323,9 @@ game_t::game_t(inputs& inputs, int height, int width)
 					if (organDir == "S")
 						return dir_t::down;
 					if (organDir == "E")
-						return dir_t::left;
-					if (organDir == "W")
 						return dir_t::right;
+					if (organDir == "W")
+						return dir_t::left;
 
 					cerr << organDir << endl;
 					throw exception();
@@ -268,7 +341,7 @@ game_t::game_t(inputs& inputs, int height, int width)
 			organ.rootId = organRootId;
 
 			m_players[owner].organs.insert({ organId, organ });
-			m_players[owner].nextId = max(m_players[owner].nextId - 1, static_cast<int>(m_players[owner].organs.size())) + 1;
+			m_nextId++;
 
 			if (organ_type == organ_type_t::root)
 				m_players[owner].roots.push_back(organ);
@@ -299,10 +372,10 @@ game_t::game_t(inputs& inputs, int height, int width)
 		m_players[opp_id].proteins[protein_type_t::D] = oppD;
 	}
 
-	int requiredActionsCount;
 	{
 		string input = inputs.get_next();
 		stringstream ss(input);
+		int requiredActionsCount;
 		ss >> requiredActionsCount;
 		m_requiredActionsCount = requiredActionsCount;
 	}
@@ -316,23 +389,28 @@ struct action_t
 	xy source;
 	xy target;
 	organ_type_t organ_type_to_grow{};
+	optional<dir_t> direction{};
 
 	void perform(game_t& game) const
 	{
 #ifdef WITHIN_VS
-		auto& cell = game.grid()[target.y][target.x];
+		cell_t& cell = game.grid()[target.y][target.x];
 		if (cell.isWall == true)
 			throw exception();
 		if (cell.organ.has_value() == true)
 			throw exception();
 
+		player_t& it_player = game.players().at(owner);
+		if (it_player.harvesters_targets.contains(target))
+			throw exception();
+
 		organ_t organ;
 		organ.owner = owner;
-		organ.id = game.players().at(owner).nextId++;
+		organ.id = game.nextId()++;
 		organ.parentId = game.grid()[source.y][source.x].organ->id;
 		organ.type = organ_type_to_grow;
 		organ.position = target;
-		organ.direction = dir_t();
+		organ.direction = direction;
 		organ.rootId = rootId;
 
 		if (cell.protein)
@@ -340,7 +418,7 @@ struct action_t
 			switch (cell.protein.value())
 			{
 			case protein_type_t::A:
-				game.players().at(owner).proteins[protein_type_t::A] += 3;
+				it_player.proteins[protein_type_t::A] += 3;
 				break;
 			default:
 				throw exception();
@@ -351,19 +429,38 @@ struct action_t
 			cell.protein.reset();
 		}
 
+		switch (organ.type)
+		{
+		case organ_type_t::basic:
+			it_player.proteins[protein_type_t::A] -= 1;
+			break;
+		case organ_type_t::harvester:
+			it_player.proteins[protein_type_t::C] -= 1;
+			it_player.proteins[protein_type_t::D] -= 1;
+			break;
+		default:
+			throw exception();
+		}
+
 		cell_t new_cell;
 		new_cell.isWall = false;
 		new_cell.organ = organ;
 		new_cell.protein.reset();
 		swap(cell, new_cell);
 
-		game.players().at(owner).organs.insert({ organ.id, organ });
+		it_player.organs.insert({ organ.id, organ });
 		if (organ_type_to_grow == organ_type_t::root)
-			game.players().at(owner).roots.push_back(organ);
+			it_player.roots.push_back(organ);
 
 #endif
 
-		cout << "GROW" << ' ' << fromId << ' ' << target.x << ' ' << target.y << ' ' << to_string(organ_type_to_grow) << endl;
+		if (owner == game_t::me_id)
+		{
+			if (direction.has_value())
+				cout << "GROW" << ' ' << fromId << ' ' << target.x << ' ' << target.y << ' ' << to_string(organ_type_to_grow) << ' ' << to_string(direction.value()) << endl;
+			else
+				cout << "GROW" << ' ' << fromId << ' ' << target.x << ' ' << target.y << ' ' << to_string(organ_type_to_grow) << endl;
+		}
 	}
 };
 
@@ -383,14 +480,21 @@ optional<action_t> organ_t::grow(game_t const& game) const
 
 	vector<vector<bfs_cell_t>> bfs(game.grid().size(), vector<bfs_cell_t>(game.grid()[0].size()));
 	multimap<distance_t, xy> remaining;
-	for (auto const& it_organ : game.players().at(owner).organs)
+
+	for (pair<const int, player_t> const& it_player : game.players())
 	{
-		if (it_organ.second.rootId != id)
-			continue;
+		for (pair<const int, organ_t> const& it_organ : it_player.second.organs)
+		{
+			if (it_player.first != owner)
+				bfs[it_organ.second.position.y][it_organ.second.position.x].visited = true;
 
-		bfs[it_organ.second.position.y][it_organ.second.position.x].distance = 0;
+			if (it_organ.second.rootId != id)
+				continue;
 
-		remaining.insert({ 0, it_organ.second.position });
+			bfs[it_organ.second.position.y][it_organ.second.position.x].distance = 0;
+
+			remaining.insert({ 0, it_organ.second.position });
+		}
 	}
 
 	while (remaining.empty() == false)
@@ -413,22 +517,30 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			continue;
 
 		vector<xy> neighbours;
-		neighbours.push_back(xy{ it_position.x + 1, it_position.y + 0 });
-		neighbours.push_back(xy{ it_position.x - 0, it_position.y - 1 });
-		neighbours.push_back(xy{ it_position.x + 0, it_position.y + 1 });
-		neighbours.push_back(xy{ it_position.x - 1, it_position.y + 0 });
-		for (auto const& it : neighbours)
+		neighbours.push_back(it_position + dir_t::right);
+		neighbours.push_back(it_position + dir_t::up);
+		neighbours.push_back(it_position + dir_t::down);
+		neighbours.push_back(it_position + dir_t::left);
+		for (xy const& it : neighbours)
 		{
 			cell_t const& it_neighbour_grid = clone.grid()[it.y][it.x];
 			if (it_neighbour_grid.isWall)
 				continue;
 
-			auto& it_neighbour = bfs[it.y][it.x];
-			if (it_neighbour.distance.has_value() == true && it_neighbour.distance.value() <= bfs_cell.distance.value() + 1)
+			if (game.players().at(owner).harvesters_targets.contains(it) == true)
+				continue; // target should not be harvested by the player
+
+			bfs_cell_t& it_neighbour = bfs[it.y][it.x];
+			if (it_neighbour.distance.has_value() == true)
 			{
-				continue;
+				assert(bfs_cell.distance.has_value());
+				if (it_neighbour.distance.value() <= bfs_cell.distance.value() + 1)
+				{
+					continue;
+				}
 			}
 
+			assert(bfs_cell.distance.has_value());
 			it_neighbour.distance = bfs_cell.distance.value() + 1;
 			remaining.insert({ it_neighbour.distance.value(), it });
 		}
@@ -437,15 +549,21 @@ optional<action_t> organ_t::grow(game_t const& game) const
 	struct data
 	{
 		xy position;
-		protein_type_t protein;
+		optional<protein_type_t> protein;
 	};
 
 	multimap<distance_t, data> mmap_distance_to_protein;
-	for (auto const& it_protein_type : game.proteins())
+	for (pair<const protein_type_t, vector<xy>> const& it_protein_type : game.proteins())
 	{
-		for (auto const& it_protein_target : it_protein_type.second)
+		for (xy const& it_protein_target : it_protein_type.second)
 		{
-			auto const& bfs_cell = bfs[it_protein_target.y][it_protein_target.x];
+			if (game.players().at(owner).harvesters_targets.contains(it_protein_target) == true)
+				continue; // target should not be harvested by the player
+
+			bfs_cell_t const& bfs_cell = bfs[it_protein_target.y][it_protein_target.x];
+			if (bfs_cell.distance.has_value() == false)
+				continue;
+
 			data d;
 			d.position = it_protein_target;
 			d.protein = it_protein_type.first;
@@ -453,59 +571,152 @@ optional<action_t> organ_t::grow(game_t const& game) const
 		}
 	}
 
+	// if there is no protein available
 	if (mmap_distance_to_protein.empty() == true)
-		return {};
-
-	const decltype(mmap_distance_to_protein)::const_iterator nearest = mmap_distance_to_protein.cbegin();
-
-	vector<xy> backtrack;
-	backtrack.push_back(nearest->second.position);
-	for (xy it_position = nearest->second.position;
-		bfs[it_position.y][it_position.x].distance.value() > 0;
-		)
 	{
-		vector<xy> neighbours;
-		neighbours.push_back(xy{ it_position.x + 1, it_position.y + 0 });
-		neighbours.push_back(xy{ it_position.x - 0, it_position.y - 1 });
-		neighbours.push_back(xy{ it_position.x + 0, it_position.y + 1 });
-		neighbours.push_back(xy{ it_position.x - 1, it_position.y + 0 });
-
-		distance_t min_distance = numeric_limits<distance_t>::max();
-		xy min_position;
-		for (auto const& it_neighbour : neighbours)
+		for (int y = 0; y < game.grid().size(); ++y)
 		{
-			cell_t const& it_neighbour_grid = clone.grid()[it_neighbour.y][it_neighbour.x];
-			if (it_neighbour_grid.isWall)
-				continue;
-
-			auto const& bfs_cell = bfs[it_neighbour.y][it_neighbour.x];
-			if (bfs_cell.distance.value() < min_distance)
+			for (int x = 0; x < game.grid()[y].size(); ++x)
 			{
-				min_distance = bfs_cell.distance.value();
-				min_position = it_neighbour;
+				bfs_cell_t const& bfs_cell = bfs[y][x];
+				if (bfs_cell.distance.has_value() == false)
+					continue;
+
+				if (bfs_cell.distance.value() != 1)
+					continue;
+
+				data d;
+				d.position = xy{ x,y };
+				d.protein = optional<protein_type_t>{};
+
+				mmap_distance_to_protein.insert({ 1, d });
 			}
 		}
-
-		if (min_distance >= numeric_limits<distance_t>::max())
-			throw exception();
-
-		backtrack.push_back(min_position);
-
-		it_position = min_position;
 	}
 
-	if (backtrack.size() <= 1)
-		throw exception();
+	multimap<organ_type_t, action_t> candidates;
 
-	action_t action;
-	action.owner = owner;
-	action.rootId = rootId;
-	action.fromId = game.grid()[backtrack.rbegin()->y][backtrack.rbegin()->x].organ->id;
-	action.source = *backtrack.rbegin();
-	action.target = *(backtrack.rbegin() + 1);
-	action.organ_type_to_grow = organ_type_t::basic;
+	for (auto const& [it_distance, it_data] : mmap_distance_to_protein)
+	{
+		vector<xy> backtrack;
+		backtrack.push_back(it_data.position);
+		assert(bfs[it_data.position.y][it_data.position.x].distance.value());
+		for (xy it_position = it_data.position;
+			bfs[it_position.y][it_position.x].distance.value() > 0;
+			)
+		{
+			vector<xy> neighbours;
+			neighbours.push_back(it_position + dir_t::left);
+			neighbours.push_back(it_position + dir_t::up);
+			neighbours.push_back(it_position + dir_t::down);
+			neighbours.push_back(it_position + dir_t::right);
 
-	return action;
+			distance_t min_distance = numeric_limits<distance_t>::max();
+			xy min_position;
+			for (xy const& it_neighbour : neighbours)
+			{
+				cell_t const& it_neighbour_grid = clone.grid()[it_neighbour.y][it_neighbour.x];
+				if (it_neighbour_grid.isWall)
+					continue;
+
+				bfs_cell_t const& bfs_cell = bfs[it_neighbour.y][it_neighbour.x];
+				if (bfs_cell.distance.has_value() == false)
+					continue; // could be an harvested protein
+
+				if (bfs_cell.distance.value() < min_distance)
+				{
+					min_distance = bfs_cell.distance.value();
+					min_position = it_neighbour;
+				}
+			}
+
+			if (min_distance >= numeric_limits<distance_t>::max())
+				throw exception();
+
+			backtrack.push_back(min_position);
+
+			it_position = min_position;
+			assert(bfs[it_data.position.y][it_data.position.x].distance.value());
+		}
+
+		if (backtrack.size() <= 1)
+			throw exception();
+
+		if (backtrack.size() == 3)
+		{
+			if (game.players().at(owner).proteins.at(protein_type_t::C) == 0
+				|| game.players().at(owner).proteins.at(protein_type_t::D) == 0)
+				continue;
+
+			action_t grow_harvester;
+			grow_harvester.owner = owner;
+			grow_harvester.rootId = rootId;
+			grow_harvester.fromId = id;
+			grow_harvester.source = *(backtrack.begin() + 2);
+			grow_harvester.target = *(backtrack.begin() + 1);
+			grow_harvester.organ_type_to_grow = organ_type_t::harvester;
+			grow_harvester.direction = grow_harvester.target - grow_harvester.source;
+			candidates.insert({ grow_harvester.organ_type_to_grow, grow_harvester });
+
+			continue;
+		}
+
+		if (game.players().at(owner).proteins.at(protein_type_t::A) == 0)
+			continue;
+
+		action_t grow_basic;
+		grow_basic.owner = owner;
+		grow_basic.rootId = rootId;
+		grow_basic.fromId = game.grid()[backtrack.rbegin()->y][backtrack.rbegin()->x].organ->id;
+		grow_basic.source = *backtrack.rbegin();
+		grow_basic.target = *(backtrack.rbegin() + 1);
+		grow_basic.organ_type_to_grow = organ_type_t::basic;
+		candidates.insert({ grow_basic.organ_type_to_grow, grow_basic });
+	}
+
+	for (auto [it, range_end] = candidates.equal_range(organ_type_t::harvester);
+		it != range_end;
+		++it)
+		return it->second;
+	for (auto [it, range_end] = candidates.equal_range(organ_type_t::basic);
+		it != range_end;
+		++it)
+		return it->second;
+	return {};
+}
+
+void game_t::update()
+{
+	for (pair<const int, player_t>& it_player : players())
+	{
+		it_player.second.harvesters_targets.clear();
+
+		for (pair<const int, organ_t> const& it_organ : it_player.second.organs)
+		{
+			if (it_organ.second.type != organ_type_t::harvester)
+				continue;
+
+			assert(it_organ.second.direction.has_value());
+			it_player.second.harvesters_targets.insert(it_organ.second.position + it_organ.second.direction.value());
+		}
+	}
+}
+
+void game_t::gather_resources()
+{
+	for (pair<const int, player_t>& it_player : players())
+	{
+		for (xy const& it_target : it_player.second.harvesters_targets)
+		{
+			cell_t const& cell = grid()[it_target.y][it_target.x];
+			if (cell.protein.has_value() == false)
+				continue; // no proteins here
+
+			protein_type_t type = cell.protein.value();
+
+			it_player.second.proteins[type] += 1;
+		}
+	}
 }
 
 #ifndef WITHIN_VS
@@ -523,6 +734,8 @@ int main()
 	while (true)
 	{
 		game_t game(inputs, height, width);
+		game.update();
+
 		int requiredActionsCount = game.requiredActionsCount();
 		for (auto const& it_root : game.players().at(game_t::me_id).roots)
 		{
