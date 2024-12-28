@@ -165,6 +165,26 @@ struct xy
 	}
 };
 
+bool is_valid(xy position, int grid_width, int grid_height)
+{
+	if (position.x < 0)
+		return false;
+	if (position.x >= grid_width)
+		return false;
+	if (position.y < 0)
+		return false;
+	if (position.y >= grid_height)
+		return false;
+	return true;
+}
+
+void add_if_valid(xy position, int grid_width, int grid_height, vector<xy>& vector)
+{
+	if (is_valid(position, grid_width, grid_height) == false)
+		return;
+	vector.push_back(position);
+}
+
 class organ_t
 {
 public:
@@ -266,6 +286,9 @@ public:
 
 	vector<vector<cell_t>>& grid() { return m_grid; }
 	vector<vector<cell_t>> const& grid() const { return m_grid; }
+
+	int grid_width() const { return m_grid[0].size(); }
+	int grid_height() const { return m_grid.size(); }
 
 	map<protein_type_t, vector<xy>> const& proteins() const { return m_proteins; }
 	map<protein_type_t, vector<xy>>& proteins() { return m_proteins; }
@@ -438,14 +461,7 @@ struct action_t
 
 		if (cell.protein)
 		{
-			switch (cell.protein.value())
-			{
-			case protein_type_t::A:
-				it_player.proteins[protein_type_t::A] += 3;
-				break;
-			default:
-				throw exception();
-			}
+			it_player.proteins[cell.protein.value()] += 3;
 
 			std::erase(game.proteins()[cell.protein.value()], target);
 
@@ -539,7 +555,8 @@ optional<action_t> organ_t::grow(game_t const& game) const
 				if (it_organ.second.type == organ_type_t::tentacle)
 				{
 					const auto tentacle_target = it_organ.second.position + it_organ.second.direction.value();
-					bfs[tentacle_target.y][tentacle_target.x].visited = true;
+					if (is_valid(tentacle_target, game.grid_width(), game.grid_height()))
+						bfs[tentacle_target.y][tentacle_target.x].visited = true;
 				}
 
 				continue;
@@ -572,10 +589,10 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			continue;
 
 		vector<xy> neighbours;
-		neighbours.push_back(it_position + dir_t::right);
-		neighbours.push_back(it_position + dir_t::up);
-		neighbours.push_back(it_position + dir_t::down);
-		neighbours.push_back(it_position + dir_t::left);
+		add_if_valid(it_position + dir_t::right, game.grid_width(), game.grid_height(), neighbours);
+		add_if_valid(it_position + dir_t::up, game.grid_width(), game.grid_height(), neighbours);
+		add_if_valid(it_position + dir_t::down, game.grid_width(), game.grid_height(), neighbours);
+		add_if_valid(it_position + dir_t::left, game.grid_width(), game.grid_height(), neighbours);
 		for (xy const& it : neighbours)
 		{
 			cell_t const& it_neighbour_grid = game.grid()[it.y][it.x];
@@ -697,10 +714,16 @@ optional<action_t> organ_t::grow(game_t const& game) const
 
 	using priority_t = int;
 	int current_prio = 0;
+	const priority_t grow_harvester_A_prio = current_prio++;
+	const priority_t grow_harvester_B_prio = current_prio++;
+	const priority_t grow_harvester_C_prio = current_prio++;
+	const priority_t grow_harvester_D_prio = current_prio++;
 	const priority_t grow_root_prio = current_prio++;
-	const priority_t grow_sporer_prio = current_prio++;
+	const priority_t grow_sporer_A_prio = current_prio++;
+	const priority_t grow_sporer_B_prio = current_prio++;
+	const priority_t grow_sporer_C_prio = current_prio++;
+	const priority_t grow_sporer_D_prio = current_prio++;
 	const priority_t grow_tentacle_prio = current_prio++;
-	const priority_t grow_harvester_prio = current_prio++;
 	const priority_t grow_basic_prio = current_prio++;
 	multimap<priority_t, action_t> candidates;
 
@@ -714,10 +737,10 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			)
 		{
 			vector<xy> neighbours;
-			neighbours.push_back(it_position + dir_t::left);
-			neighbours.push_back(it_position + dir_t::up);
-			neighbours.push_back(it_position + dir_t::down);
-			neighbours.push_back(it_position + dir_t::right);
+			add_if_valid(it_position + dir_t::left, game.grid_width(), game.grid_height(), neighbours);
+			add_if_valid(it_position + dir_t::up, game.grid_width(), game.grid_height(), neighbours);
+			add_if_valid(it_position + dir_t::down, game.grid_width(), game.grid_height(), neighbours);
+			add_if_valid(it_position + dir_t::right, game.grid_width(), game.grid_height(), neighbours);
 
 			distance_t min_distance = numeric_limits<distance_t>::max();
 			xy min_position;
@@ -763,8 +786,22 @@ optional<action_t> organ_t::grow(game_t const& game) const
 					.source = *(backtrack.begin() + 2),
 					.target = *(backtrack.begin() + 1),
 					.organ_type_to_grow = organ_type_t::harvester,
-					.direction = grow_harvester.target - grow_harvester.source,
+					.direction = *backtrack.begin() - *(backtrack.begin() + 1),
 				};
+
+				cell_t const& cell = game.grid()[backtrack.begin()->y][backtrack.begin()->x];
+				priority_t grow_harvester_prio = [&]()
+					{
+						switch (cell.protein.value())
+						{
+						case protein_type_t::A: return grow_harvester_A_prio;
+						case protein_type_t::B: return grow_harvester_B_prio;
+						case protein_type_t::C: return grow_harvester_C_prio;
+						case protein_type_t::D: return grow_harvester_D_prio;
+						}
+						throw exception();
+					}();
+
 				candidates.insert({ grow_harvester_prio, grow_harvester });
 
 				continue;
@@ -810,7 +847,7 @@ optional<action_t> organ_t::grow(game_t const& game) const
 		auto fn_from_direction = [&](int size_required)
 			{
 				optional<dir_t> from_direction;
-				for (int i = 1; i < backtrack.size() - (size_required - 1); ++i)
+				for (int i = 1; i < backtrack.size(); ++i)
 				{
 					if (from_direction.has_value() == false)
 					{
@@ -898,6 +935,19 @@ optional<action_t> organ_t::grow(game_t const& game) const
 						.organ_type_to_grow = organ_type_t::sporer,
 						.direction = opposite(fire_from_direction.value()),
 					};
+
+					cell_t const& cell = game.grid()[backtrack.begin()->y][backtrack.begin()->x];
+					priority_t grow_sporer_prio = [&]()
+						{
+							switch (cell.protein.value())
+							{
+							case protein_type_t::A: return grow_sporer_A_prio;
+							case protein_type_t::B: return grow_sporer_B_prio;
+							case protein_type_t::C: return grow_sporer_C_prio;
+							case protein_type_t::D: return grow_sporer_D_prio;
+							}
+							throw exception();
+						}();
 
 					candidates.insert({ grow_sporer_prio, grow_sporer });
 				}
@@ -1033,19 +1083,25 @@ int main()
 		game_t game(inputs, height, width);
 		game.update();
 
-		int requiredActionsCount = game.requiredActionsCount();
+		vector<optional<action_t>> actions;
 		for (auto const& it_root : game.players().at(game_t::me_id).roots)
+		{
+			auto action = it_root.grow(game);
+			actions.push_back(action);
+		}
+
+		int requiredActionsCount = game.requiredActionsCount();
+		for (optional<action_t> const& it_action : actions)
 		{
 			if (requiredActionsCount == 0)
 				break;
 			else
 				requiredActionsCount--;
 
-			auto action = it_root.grow(game);
-			if (!action)
+			if (!it_action)
 				cout << "WAIT" << endl;
 			else
-				action->perform(game);
+				it_action->perform(game);
 		}
 		for (;requiredActionsCount > 0; --requiredActionsCount)
 			cout << "WAIT" << endl;
