@@ -165,6 +165,11 @@ struct xy
 	}
 };
 
+distance_t distance(xy a, xy b)
+{
+	return abs(a.x - b.x) + abs(a.y - b.y);
+}
+
 bool is_valid(xy position, int grid_width, int grid_height)
 {
 	if (position.x < 0)
@@ -712,19 +717,71 @@ optional<action_t> organ_t::grow(game_t const& game) const
 		}
 	}
 
+	// detect if the organ has harvesters on each protein
+	set<protein_type_t> harvesting;
+	for (pair<const int, organ_t> const& it_organ : game.players().at(owner).organs)
+	{
+		if (it_organ.second.rootId != id)
+			continue;
+
+		if (it_organ.second.type == organ_type_t::harvester)
+		{
+			const xy harvester_target = it_organ.second.position + it_organ.second.direction.value();
+			if (is_valid(harvester_target, game.grid_width(), game.grid_height()) == true)
+			{
+				cell_t const& cell = game.grid()[harvester_target.y][harvester_target.x];
+				if (cell.protein.has_value() == true)
+				{
+					harvesting.insert(cell.protein.value());
+				}
+			}
+		}
+	}
+
 	using priority_t = int;
-	int current_prio = 0;
-	const priority_t grow_harvester_A_prio = current_prio++;
-	const priority_t grow_harvester_B_prio = current_prio++;
-	const priority_t grow_harvester_C_prio = current_prio++;
-	const priority_t grow_harvester_D_prio = current_prio++;
-	const priority_t grow_root_prio = current_prio++;
-	const priority_t grow_sporer_A_prio = current_prio++;
-	const priority_t grow_sporer_B_prio = current_prio++;
-	const priority_t grow_sporer_C_prio = current_prio++;
-	const priority_t grow_sporer_D_prio = current_prio++;
-	const priority_t grow_tentacle_prio = current_prio++;
-	const priority_t grow_basic_prio = current_prio++;
+	priority_t current_prio = 2;
+
+	const priority_t grow_tentacle_prio = current_prio;
+	current_prio = 5;
+	const priority_t grow_root_prio = current_prio;
+	current_prio = 10;
+
+	priority_t grow_harvester_A_prio = numeric_limits<priority_t>::max();
+	priority_t grow_sporer_A_prio = numeric_limits<priority_t>::max();
+	if (harvesting.contains(protein_type_t::A) == false)
+	{
+		grow_harvester_A_prio = current_prio;
+		grow_sporer_A_prio = current_prio;
+	}
+	current_prio = 15;
+
+	priority_t grow_harvester_B_prio = numeric_limits<priority_t>::max();
+	priority_t grow_sporer_B_prio = numeric_limits<priority_t>::max();
+	if (harvesting.contains(protein_type_t::B) == false)
+	{
+		grow_harvester_B_prio = current_prio++;
+		grow_sporer_B_prio = current_prio++;
+	}
+	current_prio = 20;
+
+	priority_t grow_harvester_C_prio = numeric_limits<priority_t>::max();
+	priority_t grow_sporer_C_prio = numeric_limits<priority_t>::max();
+	if (harvesting.contains(protein_type_t::C) == false)
+	{
+		grow_harvester_C_prio = current_prio++;
+		grow_sporer_C_prio = current_prio++;
+	}
+	current_prio = 25;
+
+	priority_t grow_harvester_D_prio = numeric_limits<priority_t>::max();
+	priority_t grow_sporer_D_prio = numeric_limits<priority_t>::max();
+	if (harvesting.contains(protein_type_t::D) == false)
+	{
+		grow_harvester_D_prio = current_prio++;
+		grow_sporer_D_prio = current_prio++;
+	}
+	current_prio = 30;
+
 	multimap<priority_t, action_t> candidates;
 
 	for (auto const& [it_distance, it_data] : mmap_distance_to_target)
@@ -737,10 +794,31 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			)
 		{
 			vector<xy> neighbours;
-			add_if_valid(it_position + dir_t::left, game.grid_width(), game.grid_height(), neighbours);
-			add_if_valid(it_position + dir_t::up, game.grid_width(), game.grid_height(), neighbours);
-			add_if_valid(it_position + dir_t::down, game.grid_width(), game.grid_height(), neighbours);
-			add_if_valid(it_position + dir_t::right, game.grid_width(), game.grid_height(), neighbours);
+			if (backtrack.size() < 2)
+			{
+				add_if_valid(it_position + dir_t::left, game.grid_width(), game.grid_height(), neighbours);
+				add_if_valid(it_position + dir_t::up, game.grid_width(), game.grid_height(), neighbours);
+				add_if_valid(it_position + dir_t::down, game.grid_width(), game.grid_height(), neighbours);
+				add_if_valid(it_position + dir_t::right, game.grid_width(), game.grid_height(), neighbours);
+			}
+			else
+			{
+				auto dir = *backtrack.rbegin() - *(backtrack.rbegin() + 1);
+				if (dir == dir_t::down || dir == dir_t::up)
+				{
+					add_if_valid(it_position + dir, game.grid_width(), game.grid_height(), neighbours);
+					add_if_valid(it_position + opposite(dir), game.grid_width(), game.grid_height(), neighbours);
+					add_if_valid(it_position + dir_t::left, game.grid_width(), game.grid_height(), neighbours);
+					add_if_valid(it_position + dir_t::right, game.grid_width(), game.grid_height(), neighbours);
+				}
+				else
+				{
+					add_if_valid(it_position + dir, game.grid_width(), game.grid_height(), neighbours);
+					add_if_valid(it_position + opposite(dir), game.grid_width(), game.grid_height(), neighbours);
+					add_if_valid(it_position + dir_t::down, game.grid_width(), game.grid_height(), neighbours);
+					add_if_valid(it_position + dir_t::up, game.grid_width(), game.grid_height(), neighbours);
+				}
+			}
 
 			distance_t min_distance = numeric_limits<distance_t>::max();
 			xy min_position;
@@ -792,14 +870,21 @@ optional<action_t> organ_t::grow(game_t const& game) const
 				cell_t const& cell = game.grid()[backtrack.begin()->y][backtrack.begin()->x];
 				priority_t grow_harvester_prio = [&]()
 					{
-						switch (cell.protein.value())
+						if (cell.protein.has_value())
 						{
-						case protein_type_t::A: return grow_harvester_A_prio;
-						case protein_type_t::B: return grow_harvester_B_prio;
-						case protein_type_t::C: return grow_harvester_C_prio;
-						case protein_type_t::D: return grow_harvester_D_prio;
+							switch (cell.protein.value())
+							{
+							case protein_type_t::A: return grow_harvester_A_prio;
+							case protein_type_t::B: return grow_harvester_B_prio;
+							case protein_type_t::C: return grow_harvester_C_prio;
+							case protein_type_t::D: return grow_harvester_D_prio;
+							}
+							throw exception();
 						}
-						throw exception();
+						else
+						{
+							return numeric_limits<priority_t>::max();
+						}
 					}();
 
 				candidates.insert({ grow_harvester_prio, grow_harvester });
@@ -808,7 +893,25 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			}
 		}
 
-		priority_t priority = grow_basic_prio;
+		cell_t const& cell = game.grid()[backtrack.begin()->y][backtrack.begin()->x];
+		priority_t priority = [&]()
+			{
+				if (cell.protein.has_value() == true)
+				{
+					switch (cell.protein.value())
+					{
+					case protein_type_t::A: return grow_harvester_A_prio;
+					case protein_type_t::B: return grow_harvester_B_prio;
+					case protein_type_t::C: return grow_harvester_C_prio;
+					case protein_type_t::D: return grow_harvester_D_prio;
+					}
+					throw exception();
+				}
+				else
+				{
+					return numeric_limits<priority_t>::max();
+				}
+			}();
 
 		if (it_data.type == action_type_t::attack)
 		{
@@ -844,10 +947,10 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			}
 		}
 
-		auto fn_from_direction = [&](int size_required)
+		auto fn_from_direction = [&](int size_required, int delta_begin)
 			{
 				optional<dir_t> from_direction;
-				for (int i = 1; i < backtrack.size(); ++i)
+				for (int i = 2; i < backtrack.size() - delta_begin; ++i)
 				{
 					if (from_direction.has_value() == false)
 					{
@@ -888,20 +991,22 @@ optional<action_t> organ_t::grow(game_t const& game) const
 				{
 					[[maybe_unused]] const int breakpoint = 1;
 				}
-				else if (optional<dir_t> fire_from_direction = fn_from_direction(size_required_for_root); fire_from_direction.has_value() == true)
+				else if (optional<dir_t> fire_from_direction = fn_from_direction(size_required_for_root, 0); fire_from_direction.has_value() == true)
 				{
-					action_t grow_root
+					if (fire_from_direction.value() == opposite(cell.organ.value().direction.value()))
 					{
-						.owner = owner,
-						.rootId = rootId,
-						.fromId = game.grid()[backtrack.rbegin()->y][backtrack.rbegin()->x].organ->id,
-						.source = *backtrack.rbegin(),
-						.target = *(backtrack.begin() + 2),
-						.organ_type_to_grow = organ_type_t::root,
-						.direction = opposite(fire_from_direction.value()),
-					};
+						action_t grow_root
+						{
+							.owner = owner,
+							.rootId = rootId,
+							.fromId = game.grid()[backtrack.rbegin()->y][backtrack.rbegin()->x].organ->id,
+							.source = *backtrack.rbegin(),
+							.target = *(backtrack.begin() + 2),
+							.organ_type_to_grow = organ_type_t::root,
+						};
 
-					candidates.insert({ grow_root_prio, grow_root });
+						candidates.insert({ grow_root_prio, grow_root });
+					}
 				}
 				else
 				{
@@ -921,7 +1026,7 @@ optional<action_t> organ_t::grow(game_t const& game) const
 				&& game.players().at(owner).proteins.at(protein_type_t::D) >= 2)
 			{
 				// clear path ?
-				optional<dir_t> fire_from_direction = fn_from_direction(size_required_for_sporer);
+				optional<dir_t> fire_from_direction = fn_from_direction(size_required_for_sporer, 1);
 
 				if (fire_from_direction.has_value() == true)
 				{
@@ -939,15 +1044,26 @@ optional<action_t> organ_t::grow(game_t const& game) const
 					cell_t const& cell = game.grid()[backtrack.begin()->y][backtrack.begin()->x];
 					priority_t grow_sporer_prio = [&]()
 						{
-							switch (cell.protein.value())
+							if (cell.protein.has_value())
 							{
-							case protein_type_t::A: return grow_sporer_A_prio;
-							case protein_type_t::B: return grow_sporer_B_prio;
-							case protein_type_t::C: return grow_sporer_C_prio;
-							case protein_type_t::D: return grow_sporer_D_prio;
+								switch (cell.protein.value())
+								{
+								case protein_type_t::A: return grow_sporer_A_prio;
+								case protein_type_t::B: return grow_sporer_B_prio;
+								case protein_type_t::C: return grow_sporer_C_prio;
+								case protein_type_t::D: return grow_sporer_D_prio;
+								}
+								throw exception();
 							}
-							throw exception();
+							else
+							{
+								return numeric_limits<priority_t>::max();
+							}
 						}();
+
+					distance_t sporer_fire_distance = distance(backtrack[1], *(backtrack.rbegin() + 2));
+					if (sporer_fire_distance > 1)
+						grow_sporer_prio -= 2;
 
 					candidates.insert({ grow_sporer_prio, grow_sporer });
 				}
