@@ -827,6 +827,8 @@ optional<action_t> organ_t::grow(game_t const& game) const
 				cell_t const& it_neighbour_grid = game.grid()[it_neighbour.y][it_neighbour.x];
 				if (it_neighbour_grid.isWall)
 					continue;
+				if (it_neighbour_grid.organ && it_neighbour_grid.organ->owner != owner)
+					continue;
 
 				bfs_cell_t const& bfs_cell = bfs[it_neighbour.y][it_neighbour.x];
 				if (bfs_cell.distance.has_value() == false)
@@ -834,8 +836,11 @@ optional<action_t> organ_t::grow(game_t const& game) const
 
 				if (bfs_cell.distance.value() < min_distance)
 				{
-					min_distance = bfs_cell.distance.value();
-					min_position = it_neighbour;
+					if (find(backtrack.crbegin(), backtrack.crend(), it_neighbour) == backtrack.crend())
+					{
+						min_distance = bfs_cell.distance.value();
+						min_position = it_neighbour;
+					}
 				}
 			}
 
@@ -872,14 +877,7 @@ optional<action_t> organ_t::grow(game_t const& game) const
 					{
 						if (cell.protein.has_value())
 						{
-							switch (cell.protein.value())
-							{
-							case protein_type_t::A: return grow_harvester_A_prio;
-							case protein_type_t::B: return grow_harvester_B_prio;
-							case protein_type_t::C: return grow_harvester_C_prio;
-							case protein_type_t::D: return grow_harvester_D_prio;
-							}
-							throw exception();
+							return min(min(grow_harvester_A_prio, grow_harvester_B_prio), min(grow_harvester_C_prio, grow_harvester_D_prio));
 						}
 						else
 						{
