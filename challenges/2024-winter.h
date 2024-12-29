@@ -104,6 +104,7 @@ enum class protein_type_t
 	D
 };
 
+using priority_t = int;
 using id_player_t = int;
 using id_organ_t = int;
 using distance_t = int;
@@ -432,6 +433,7 @@ game_t::game_t(inputs& inputs, int height, int width)
 
 struct action_t
 {
+	priority_t priority = -1;
 	id_player_t owner = -1;
 	id_organ_t rootId = -1;
 	id_organ_t fromId = -1;
@@ -772,7 +774,6 @@ optional<action_t> organ_t::grow(game_t const& game) const
 		}
 	}
 
-	using priority_t = int;
 	priority_t current_prio = 2;
 
 	const priority_t grow_tentacle_prio = current_prio;
@@ -823,6 +824,7 @@ optional<action_t> organ_t::grow(game_t const& game) const
 	current_prio += 5;
 
 	multimap<priority_t, action_t> candidates;
+	multimap<xy, action_t> mmap_harversters_candidates;
 
 	for (auto const& [it_distance, it_data] : mmap_distance_to_target)
 	{
@@ -901,18 +903,6 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			if (game.players().at(owner).proteins.at(protein_type_t::C) >= 1
 				&& game.players().at(owner).proteins.at(protein_type_t::D) >= 1)
 			{
-				const xy source = *(backtrack.begin() + 2);
-				const action_t grow_harvester
-				{
-					.owner = owner,
-					.rootId = rootId,
-					.fromId = game.grid()[source.y][source.x].organ->id,
-					.source = source,
-					.target = *(backtrack.begin() + 1),
-					.organ_type_to_grow = organ_type_t::harvester,
-					.direction = *backtrack.begin() - *(backtrack.begin() + 1),
-				};
-
 				cell_t const& cell = game.grid()[backtrack.begin()->y][backtrack.begin()->x];
 				const priority_t grow_harvester_prio = [&]()
 					{
@@ -926,8 +916,21 @@ optional<action_t> organ_t::grow(game_t const& game) const
 						}
 					}();
 
-				candidates.insert({ grow_harvester_prio, grow_harvester });
+				const xy source = *(backtrack.begin() + 2);
+				const action_t grow_harvester
+				{
+					.priority = grow_harvester_prio,
+					.owner = owner,
+					.rootId = rootId,
+					.fromId = game.grid()[source.y][source.x].organ->id,
+					.source = source,
+					.target = *(backtrack.begin() + 1),
+					.organ_type_to_grow = organ_type_t::harvester,
+					.direction = *backtrack.begin() - *(backtrack.begin() + 1),
+				};
 
+				candidates.insert({ grow_harvester_prio, grow_harvester });
+				mmap_harversters_candidates.insert({ grow_harvester.target, grow_harvester });
 				continue;
 			}
 		}
@@ -970,13 +973,14 @@ optional<action_t> organ_t::grow(game_t const& game) const
 					const xy source = *backtrack.rbegin();
 					const action_t grow_tentacle
 					{
+						.priority = grow_tentacle_prio,
 						.owner = owner,
 						.rootId = rootId,
 						.fromId = game.grid()[source.y][source.x].organ->id,
 						.source = source,
 						.target = *(backtrack.rbegin() + 1),
 						.organ_type_to_grow = organ_type_t::tentacle,
-						.direction = *backtrack.begin() - *(backtrack.begin()+1),
+						.direction = *backtrack.begin() - *(backtrack.begin() + 1),
 					};
 					candidates.insert({ grow_tentacle_prio, grow_tentacle });
 
@@ -1035,16 +1039,6 @@ optional<action_t> organ_t::grow(game_t const& game) const
 				{
 					if (fire_from_direction.value() == opposite(src_cell.organ.value().direction.value()))
 					{
-						const action_t grow_root
-						{
-							.owner = owner,
-							.rootId = rootId,
-							.fromId = game.grid()[backtrack.rbegin()->y][backtrack.rbegin()->x].organ->id,
-							.source = *backtrack.rbegin(),
-							.target = *(backtrack.begin() + 2),
-							.organ_type_to_grow = organ_type_t::root,
-						};
-
 						cell_t const& target_cell = game.grid()[backtrack.begin()->y][backtrack.begin()->x];
 						priority_t grow_root_prio = [&]()
 							{
@@ -1069,6 +1063,28 @@ optional<action_t> organ_t::grow(game_t const& game) const
 						const distance_t saving = (distance_t(backtrack.size()) - 2) - sporer_fire_distance;
 						if (saving >= 1)
 							grow_root_prio -= saving - 1;
+
+						const xy new_root_position = *(backtrack.begin() + 2);
+
+						// we want harvesters instead of roots
+						for (auto [it, range_end] = mmap_harversters_candidates.equal_range(new_root_position);
+							it != range_end;
+							++it)
+						{
+							if (it->second.priority >= grow_root_prio)
+								grow_root_prio = max(grow_root_prio, it->second.priority + 1);
+						}
+
+						const action_t grow_root
+						{
+							.priority = grow_root_prio,
+							.owner = owner,
+							.rootId = rootId,
+							.fromId = game.grid()[backtrack.rbegin()->y][backtrack.rbegin()->x].organ->id,
+							.source = *backtrack.rbegin(),
+							.target = new_root_position,
+							.organ_type_to_grow = organ_type_t::root,
+						};
 
 						candidates.insert({ grow_root_prio, grow_root });
 					}
@@ -1105,17 +1121,6 @@ optional<action_t> organ_t::grow(game_t const& game) const
 
 				if (fire_from_direction.has_value() == true)
 				{
-					const action_t grow_sporer
-					{
-						.owner = owner,
-						.rootId = rootId,
-						.fromId = game.grid()[backtrack.rbegin()->y][backtrack.rbegin()->x].organ->id,
-						.source = *backtrack.rbegin(),
-						.target = *(backtrack.rbegin() + 1),
-						.organ_type_to_grow = organ_type_t::sporer,
-						.direction = opposite(fire_from_direction.value()),
-					};
-
 					cell_t const& target_cell = game.grid()[backtrack.begin()->y][backtrack.begin()->x];
 					priority_t grow_sporer_prio = [&]()
 						{
@@ -1141,6 +1146,29 @@ optional<action_t> organ_t::grow(game_t const& game) const
 					if (saving >= 1)
 						grow_sporer_prio -= saving - 1;
 
+					const xy new_sporer_position = *(backtrack.rbegin() + 1);
+
+					// we want harvesters instead of sporers
+					for (auto [it, range_end] = mmap_harversters_candidates.equal_range(new_sporer_position);
+						it != range_end;
+						++it)
+					{
+						if (it->second.priority >= grow_sporer_prio)
+							grow_sporer_prio = max(grow_sporer_prio, it->second.priority + 1);
+					}
+
+					const action_t grow_sporer
+					{
+						.priority = grow_sporer_prio,
+						.owner = owner,
+						.rootId = rootId,
+						.fromId = game.grid()[backtrack.rbegin()->y][backtrack.rbegin()->x].organ->id,
+						.source = *backtrack.rbegin(),
+						.target = new_sporer_position,
+						.organ_type_to_grow = organ_type_t::sporer,
+						.direction = opposite(fire_from_direction.value()),
+					};
+
 					candidates.insert({ grow_sporer_prio, grow_sporer });
 				}
 			}
@@ -1149,16 +1177,30 @@ optional<action_t> organ_t::grow(game_t const& game) const
 		if (game.players().at(owner).proteins.at(protein_type_t::A) == 0)
 			continue;
 
+		priority_t grow_basic_priority = priority + 2;
+
+		const xy new_basic_position = *(backtrack.rbegin() + 1);
+
+		// we want harvesters instead of sporers
+		for (auto [it, range_end] = mmap_harversters_candidates.equal_range(new_basic_position);
+			it != range_end;
+			++it)
+		{
+			if (it->second.priority >= grow_basic_priority)
+				grow_basic_priority = max(grow_basic_priority, it->second.priority + 1);
+		}
+
 		const action_t grow_basic
 		{
+			.priority = grow_basic_priority,
 			.owner = owner,
 			.rootId = rootId,
 			.fromId = game.grid()[backtrack.rbegin()->y][backtrack.rbegin()->x].organ->id,
 			.source = *backtrack.rbegin(),
-			.target = *(backtrack.rbegin() + 1),
+			.target = new_basic_position,
 			.organ_type_to_grow = organ_type_t::basic,
 		};
-		candidates.insert({ priority + 2, grow_basic });
+		candidates.insert({ grow_basic_priority, grow_basic });
 	}
 
 	for (pair<const int, action_t> const& it : candidates)

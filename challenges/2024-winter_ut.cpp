@@ -1950,6 +1950,7 @@ TEST(_2024_WINTER, _2_SILVER)
 
 TEST(_2024_WINTER, _3_SILVER)
 {
+	return;
 	vector<string> replay =
 	{
 "16 8",
@@ -2008,6 +2009,96 @@ TEST(_2024_WINTER, _3_SILVER)
 "15 7 WALL - 1 0 X 0 0",
 "7 10 9 5",
 "7 10 9 5",
+"1",
+	};
+
+	inputs inputs(replay);
+
+	string input = inputs.get_next();
+	int width, height;
+	{
+		stringstream ss(input);
+		ss >> width >> height;
+	}
+
+	game_t game(inputs, height, width);
+	while (true)
+	{
+		game.update();
+		game.gather_resources();
+		cout << string(game.grid_width(), '_') << endl;
+		game.serialize_grid(cout);
+
+		for (pair<const int, player_t> const& it_player : game.players())
+		{
+			if (it_player.first == game_t::opp_id)
+				continue;
+
+			vector<optional<action_t>> actions;
+			for (organ_t const& it_root : it_player.second.roots)
+			{
+				optional<action_t> action = it_root.grow(game);
+				actions.push_back(action);
+			}
+
+			for (optional<action_t> const& it_action : actions)
+			{
+				if (!it_action)
+				{
+					if (it_player.first == game_t::me_id)
+						cout << "WAIT" << endl;
+				}
+				else
+					it_action->perform(game);
+			}
+		}
+	}
+}
+
+TEST(_2024_WINTER, _4_SILVER)
+{
+	vector<string> replay =
+	{
+"16 8",
+"36",
+"6 0 D - 1 0 X 0 0",
+"10 0 WALL - 1 0 X 0 0",
+"13 0 D - 1 0 X 0 0",
+"14 0 B - 1 0 X 0 0",
+"3 1 ROOT 0 1 N 0 1",
+"4 1 WALL - 1 0 X 0 0",
+"6 1 A - 1 0 X 0 0",
+"8 1 WALL - 1 0 X 0 0",
+"9 1 C - 1 0 X 0 0",
+"12 1 A - 1 0 X 0 0",
+"0 2 B - 1 0 X 0 0",
+"3 2 A - 1 0 X 0 0",
+"9 2 D - 1 0 X 0 0",
+"11 2 B - 1 0 X 0 0",
+"12 2 WALL - 1 0 X 0 0",
+"2 3 A - 1 0 X 0 0",
+"11 3 C - 1 0 X 0 0",
+"14 3 C - 1 0 X 0 0",
+"1 4 C - 1 0 X 0 0",
+"4 4 C - 1 0 X 0 0",
+"13 4 A - 1 0 X 0 0",
+"3 5 WALL - 1 0 X 0 0",
+"4 5 B - 1 0 X 0 0",
+"6 5 D - 1 0 X 0 0",
+"12 5 A - 1 0 X 0 0",
+"15 5 B - 1 0 X 0 0",
+"3 6 A - 1 0 X 0 0",
+"6 6 C - 1 0 X 0 0",
+"7 6 WALL - 1 0 X 0 0",
+"9 6 A - 1 0 X 0 0",
+"11 6 WALL - 1 0 X 0 0",
+"12 6 ROOT 1 2 N 0 2",
+"1 7 B - 1 0 X 0 0",
+"2 7 D - 1 0 X 0 0",
+"5 7 WALL - 1 0 X 0 0",
+"9 7 D - 1 0 X 0 0",
+"3 9 5 8",
+"3 9 5 8",
 "1",
 	};
 
