@@ -661,8 +661,56 @@ optional<action_t> organ_t::grow(game_t const& game) const
 		}
 	}
 
-	// if there is no protein available
-	if (mmap_distance_to_target.empty() == true)
+	// detect if the organ has harvesters on each protein
+	set<protein_type_t> harvesting;
+	for (pair<const int, organ_t> const& it_organ : game.players().at(owner).organs)
+	{
+		if (it_organ.second.rootId != id)
+			continue;
+
+		if (it_organ.second.type == organ_type_t::harvester)
+		{
+			const xy harvester_target = it_organ.second.position + it_organ.second.direction.value();
+			if (is_valid(harvester_target, game.grid_width(), game.grid_height()) == true)
+			{
+				cell_t const& cell = game.grid()[harvester_target.y][harvester_target.x];
+				if (cell.protein.has_value() == true)
+				{
+					harvesting.insert(cell.protein.value());
+				}
+			}
+		}
+	}
+
+	// finds the organs to attack
+	multimap<distance_t, data_t> mmap_distance_to_enemy;
+	for (pair<const int, player_t> const& it_player : game.players())
+	{
+		if (it_player.first == owner)
+			continue;
+
+		for (pair<const int, organ_t> const& it_organ : it_player.second.organs)
+		{
+			bfs_cell_t const& bfs_cell = bfs[it_organ.second.position.y][it_organ.second.position.x];
+			if (bfs_cell.distance.has_value() == false)
+				continue;
+
+			const data_t d
+			{
+				.type = action_type_t::attack,
+				.position = it_organ.second.position,
+				.protein = optional<protein_type_t>{},
+			};
+
+			mmap_distance_to_enemy.insert({ bfs_cell.distance.value(), d });
+		}
+	}
+
+	const bool harvesting_ok_for_tentacles = harvesting.contains(protein_type_t::B) && harvesting.contains(protein_type_t::C);
+	const bool way_enough_resources_for_tentacles = game.players().at(owner).proteins.at(protein_type_t::B) >= 5 && game.players().at(owner).proteins.at(protein_type_t::C) >= 5;
+	const bool enemy_is_near = mmap_distance_to_enemy.empty() == false && mmap_distance_to_enemy.begin()->first <= 7; // enemy is near
+
+	if (mmap_distance_to_target.empty() == true) // if there is no protein available
 	{
 		// finds the nearest empty cells
 		for (int y = 0; y < game.grid().size(); ++y)
@@ -690,7 +738,13 @@ optional<action_t> organ_t::grow(game_t const& game) const
 				mmap_distance_to_target.insert({ 1, d });
 			}
 		}
+	}
 
+	if (mmap_distance_to_target.empty() == true // if there is no protein available
+		|| harvesting_ok_for_tentacles
+		|| way_enough_resources_for_tentacles
+		|| enemy_is_near)
+	{
 		// finds the organs to attack
 		for (pair<const int, player_t> const& it_player : game.players())
 		{
@@ -714,27 +768,6 @@ optional<action_t> organ_t::grow(game_t const& game) const
 				};
 
 				mmap_distance_to_target.insert({ bfs_cell.distance.value(), d });
-			}
-		}
-	}
-
-	// detect if the organ has harvesters on each protein
-	set<protein_type_t> harvesting;
-	for (pair<const int, organ_t> const& it_organ : game.players().at(owner).organs)
-	{
-		if (it_organ.second.rootId != id)
-			continue;
-
-		if (it_organ.second.type == organ_type_t::harvester)
-		{
-			const xy harvester_target = it_organ.second.position + it_organ.second.direction.value();
-			if (is_valid(harvester_target, game.grid_width(), game.grid_height()) == true)
-			{
-				cell_t const& cell = game.grid()[harvester_target.y][harvester_target.x];
-				if (cell.protein.has_value() == true)
-				{
-					harvesting.insert(cell.protein.value());
-				}
 			}
 		}
 	}
@@ -925,7 +958,7 @@ optional<action_t> organ_t::grow(game_t const& game) const
 				game.players().at(owner).proteins.at(protein_type_t::B) >= 1
 				&& game.players().at(owner).proteins.at(protein_type_t::C) >= 1;
 
-			if (backtrack.size() != 3)
+			if (backtrack.size() != 3 && backtrack.size() != 4)
 			{
 				if (tentacle_enough_resources)
 					priority = grow_tentacle_prio;
@@ -934,16 +967,16 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			{
 				if (tentacle_enough_resources)
 				{
-					const xy source = *(backtrack.begin() + 2);
+					const xy source = *backtrack.rbegin();
 					const action_t grow_tentacle
 					{
 						.owner = owner,
 						.rootId = rootId,
 						.fromId = game.grid()[source.y][source.x].organ->id,
 						.source = source,
-						.target = *(backtrack.begin() + 1),
+						.target = *(backtrack.rbegin() + 1),
 						.organ_type_to_grow = organ_type_t::tentacle,
-						.direction = grow_tentacle.target - grow_tentacle.source,
+						.direction = *backtrack.begin() - *(backtrack.begin()+1),
 					};
 					candidates.insert({ grow_tentacle_prio, grow_tentacle });
 
