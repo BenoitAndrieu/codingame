@@ -861,12 +861,13 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			if (game.players().at(owner).proteins.at(protein_type_t::C) >= 1
 				&& game.players().at(owner).proteins.at(protein_type_t::D) >= 1)
 			{
-				action_t grow_harvester
+				const xy source = *(backtrack.begin() + 2);
+				const action_t grow_harvester
 				{
 					.owner = owner,
 					.rootId = rootId,
-					.fromId = id,
-					.source = *(backtrack.begin() + 2),
+					.fromId = game.grid()[source.y][source.x].organ->id,
+					.source = source,
 					.target = *(backtrack.begin() + 1),
 					.organ_type_to_grow = organ_type_t::harvester,
 					.direction = *backtrack.begin() - *(backtrack.begin() + 1),
