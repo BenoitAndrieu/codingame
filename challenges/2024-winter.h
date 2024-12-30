@@ -578,19 +578,19 @@ optional<action_t> organ_t::grow(game_t const& game) const
 	const vector<vector<bfs_cell_t>> bfs_init_state = bfs;
 	const multimap<distance_t, xy> bfs_queue_init_state = bfs_queue;
 
-	auto fn_compute_bfs = [&game](id_player_t player_id, auto& bfs, auto& bfs_queue)
+	auto fn_compute_bfs = [&game](auto& _bfs, auto& _bfs_queue, set<xy> const& _harvesters_targets)
 		{
-			while (bfs_queue.empty() == false)
+			while (_bfs_queue.empty() == false)
 			{
 				const xy it_position = [&]()
 					{
-						auto const it = bfs_queue.cbegin();
+						auto const it = _bfs_queue.cbegin();
 						const xy position = it->second;
-						bfs_queue.erase(it);
+						_bfs_queue.erase(it);
 						return position;
 					}();
 
-				bfs_cell_t& bfs_cell = bfs[it_position.y][it_position.x];
+				bfs_cell_t& bfs_cell = _bfs[it_position.y][it_position.x];
 				if (bfs_cell.visited)
 					continue;
 
@@ -611,10 +611,10 @@ optional<action_t> organ_t::grow(game_t const& game) const
 					if (it_neighbour_grid.isWall)
 						continue;
 
-					if (game.players().at(player_id).harvesters_targets.contains(it) == true)
+					if (_harvesters_targets.contains(it) == true)
 						continue; // target should not be harvested by the root's player
 
-					bfs_cell_t& it_neighbour = bfs[it.y][it.x];
+					bfs_cell_t& it_neighbour = _bfs[it.y][it.x];
 					if (it_neighbour.distance.has_value() == true)
 					{
 						assert(bfs_cell.distance.has_value());
@@ -627,12 +627,12 @@ optional<action_t> organ_t::grow(game_t const& game) const
 
 					assert(bfs_cell.distance.has_value());
 					it_neighbour.distance = bfs_cell.distance.value() + 1;
-					bfs_queue.insert({ it_neighbour.distance.value(), it });
+					_bfs_queue.insert({ it_neighbour.distance.value(), it });
 				}
 			}
 		};
 
-	fn_compute_bfs(owner, bfs, bfs_queue);
+	fn_compute_bfs(bfs, bfs_queue, game.players().at(owner).harvesters_targets);
 
 	enum class action_type_t
 	{
@@ -918,38 +918,105 @@ optional<action_t> organ_t::grow(game_t const& game) const
 
 		if (backtrack.size() == 3 && it_data.type == action_type_t::grow)
 		{
-			if (game.players().at(owner).proteins.at(protein_type_t::C) >= 1
-				&& game.players().at(owner).proteins.at(protein_type_t::D) >= 1)
+			if (game.players().at(owner).proteins.at(protein_type_t::C) < 1
+				|| game.players().at(owner).proteins.at(protein_type_t::D) < 1)
 			{
-				cell_t const& cell = game.grid()[backtrack.begin()->y][backtrack.begin()->x];
-				const priority_t grow_harvester_prio = [&]()
+				// not enough resources for an harvester
+				[[maybe_unused]] const int breakpoint = 1;
+			}
+			else
+			{
+				// enough resources for an harvester
+
+				const xy harvester_position = *(backtrack.begin() + 1);
+				const xy protein_position = *backtrack.begin();
+
+				// we will perform a distance computation to check if the harvester would be a blocker
+
+				vector<vector<bfs_cell_t>> bfs_harvester = bfs_init_state;
+				multimap<distance_t, xy> bfs_queue_harvester = bfs_queue_init_state;
+				set<xy> harvesters_targets = game.players().at(owner).harvesters_targets;
+
+				{
+					bfs_harvester[harvester_position.y][harvester_position.x].distance = 0;
+					bfs_queue_harvester.insert({ 0, harvester_position });
+					harvesters_targets.insert(protein_position);
+				}
+
+				fn_compute_bfs(bfs_harvester, bfs_queue_harvester, harvesters_targets);
+
+				vector<xy> positions_to_check = [&]()
 					{
-						if (cell.protein.has_value())
+						vector<xy> positions;
+						for (int i = -1; i <= 1;++i)
 						{
-							return min(min(grow_harvester_A_prio, grow_harvester_B_prio), min(grow_harvester_C_prio, grow_harvester_D_prio));
+							for (int j = -1; j <= 1;++j)
+							{
+								if (i == 0 && j == 0)
+									continue;
+								add_if_valid(xy(protein_position.x + i, protein_position.y + j), game.grid_width(), game.grid_height(), positions);
+							}
 						}
-						else
-						{
-							return numeric_limits<priority_t>::max() / 2;
-						}
+						return positions;
 					}();
 
-				const xy source = *(backtrack.begin() + 2);
-				const action_t grow_harvester
-				{
-					.priority = grow_harvester_prio,
-					.owner = owner,
-					.rootId = rootId,
-					.fromId = game.grid()[source.y][source.x].organ->id,
-					.source = source,
-					.target = *(backtrack.begin() + 1),
-					.organ_type_to_grow = organ_type_t::harvester,
-					.direction = *backtrack.begin() - *(backtrack.begin() + 1),
-				};
+				bool blocking = [&]()
+					{
+						for (const xy it_position : positions_to_check)
+						{
+							bfs_cell_t const& bfs_cell_harvester = bfs_harvester[it_position.y][it_position.x];
+							bfs_cell_t const& bfs_cell = bfs[it_position.y][it_position.x];
 
-				candidates.insert({ grow_harvester_prio, grow_harvester });
-				mmap_harversters_candidates.insert({ grow_harvester.target, grow_harvester });
-				continue;
+							if (bfs_cell.distance.has_value() == false)
+								continue;
+							if (bfs_cell.distance.value() == 0)
+								continue;
+							if (bfs_cell_harvester.distance.has_value() == true)
+								continue; // not a blocker
+
+							return true; // blocker
+						}
+
+						return false;
+					}();
+
+				if (blocking == true)
+				{
+					[[maybe_unused]] const int breakpoint = 1;
+				}
+				else
+				{
+					cell_t const& cell = game.grid()[protein_position.y][protein_position.x];
+					const priority_t grow_harvester_prio = [&]()
+						{
+							if (cell.protein.has_value())
+							{
+								return min(min(grow_harvester_A_prio, grow_harvester_B_prio), min(grow_harvester_C_prio, grow_harvester_D_prio));
+							}
+							else
+							{
+								return numeric_limits<priority_t>::max() / 2;
+							}
+						}();
+
+					const xy source = *(backtrack.begin() + 2);
+					const action_t grow_harvester
+					{
+						.priority = grow_harvester_prio,
+						.owner = owner,
+						.rootId = rootId,
+						.fromId = game.grid()[source.y][source.x].organ->id,
+						.source = source,
+						.target = harvester_position,
+						.organ_type_to_grow = organ_type_t::harvester,
+						.direction = protein_position - harvester_position,
+					};
+
+					candidates.insert({ grow_harvester_prio, grow_harvester });
+					mmap_harversters_candidates.insert({ grow_harvester.target, grow_harvester });
+
+					continue;
+				}
 			}
 		}
 
