@@ -845,6 +845,7 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			}
 			else
 			{
+				// trying to stay in the same direction to favor spore fire
 				const dir_t dir = *backtrack.rbegin() - *(backtrack.rbegin() + 1);
 				if (dir == dir_t::down || dir == dir_t::up)
 				{
@@ -866,6 +867,10 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			xy min_position;
 			for (xy const& it_neighbour : neighbours)
 			{
+				// avoid to go on the same cells over and over
+				if (find(backtrack.crbegin(), backtrack.crend(), it_neighbour) != backtrack.crend())
+					continue;
+
 				cell_t const& it_neighbour_grid = game.grid()[it_neighbour.y][it_neighbour.x];
 				if (it_neighbour_grid.isWall)
 					continue;
@@ -876,14 +881,20 @@ optional<action_t> organ_t::grow(game_t const& game) const
 				if (bfs_cell.distance.has_value() == false)
 					continue; // could be an harvested protein
 
-				if (bfs_cell.distance.value() < min_distance)
+				if (bfs_cell.distance.value() > min_distance)
+					continue;
+
+				if (bfs_cell.distance.value() == min_distance)
 				{
-					if (find(backtrack.crbegin(), backtrack.crend(), it_neighbour) == backtrack.crend())
-					{
-						min_distance = bfs_cell.distance.value();
-						min_position = it_neighbour;
-					}
+					cell_t const& it_min_position_grid = game.grid()[min_position.y][min_position.x];
+					if (it_min_position_grid.protein.has_value() == false)
+						continue; // the current minima does not go through a protein, it is better
+
+					[[maybe_unused]] const int breakpoint = 1;
 				}
+
+				min_distance = bfs_cell.distance.value();
+				min_position = it_neighbour;
 			}
 
 			if (min_distance >= numeric_limits<distance_t>::max())
@@ -964,7 +975,13 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			if (backtrack.size() != 3 && backtrack.size() != 4)
 			{
 				if (tentacle_enough_resources)
+				{
 					priority = grow_tentacle_prio;
+					if (backtrack.size() >= 10)
+					{
+						priority += 10;
+					}
+				}
 			}
 			else
 			{
@@ -1181,7 +1198,7 @@ optional<action_t> organ_t::grow(game_t const& game) const
 
 		const xy new_basic_position = *(backtrack.rbegin() + 1);
 
-		// we want harvesters instead of sporers
+		// we want harvesters instead of basics
 		for (auto [it, range_end] = mmap_harversters_candidates.equal_range(new_basic_position);
 			it != range_end;
 			++it)
@@ -1189,6 +1206,10 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			if (it->second.priority >= grow_basic_priority)
 				grow_basic_priority = max(grow_basic_priority, it->second.priority + 1);
 		}
+
+		cell_t const& target_cell = game.grid()[new_basic_position.y][new_basic_position.x];
+		if (target_cell.protein.has_value() == true)
+			grow_basic_priority += 2;
 
 		const action_t grow_basic
 		{
