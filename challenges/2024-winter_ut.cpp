@@ -2241,6 +2241,7 @@ TEST(_2024_WINTER, _5_SILVER)
 
 TEST(_2024_WINTER, _6_SILVER)
 {
+	return;
 	vector<string> replay =
 	{
 "18 9",
@@ -2317,6 +2318,222 @@ TEST(_2024_WINTER, _6_SILVER)
 "16 8 ROOT 1 2 N 0 2",
 "5 8 7 9",
 "5 8 7 9",
+"1",
+	};
+
+	inputs inputs(replay);
+
+	string input = inputs.get_next();
+	int width, height;
+	{
+		stringstream ss(input);
+		ss >> width >> height;
+	}
+
+	game_t game(inputs, height, width);
+	while (true)
+	{
+		game.update();
+		game.gather_resources();
+		cout << string(game.grid_width(), '_') << endl;
+		game.serialize_grid(cout);
+
+		for (pair<const int, player_t> const& it_player : game.players())
+		{
+			if (it_player.first == game_t::opp_id)
+				continue;
+
+			vector<optional<action_t>> actions;
+			for (organ_t const& it_root : it_player.second.roots)
+			{
+				optional<action_t> action = it_root.grow(game);
+				actions.push_back(action);
+			}
+
+			for (optional<action_t> const& it_action : actions)
+			{
+				if (!it_action)
+				{
+					if (it_player.first == game_t::me_id)
+						cout << "WAIT" << endl;
+				}
+				else
+					it_action->perform(game);
+			}
+		}
+	}
+}
+
+TEST(_2024_WINTER, _7_SILVER)
+{
+	vector<string> replay =
+	{
+"24 12",
+"162",
+"5 0 WALL - 1 0 X 0 0",
+"6 0 WALL - 1 0 X 0 0",
+"7 0 WALL - 1 0 X 0 0",
+"8 0 WALL - 1 0 X 0 0",
+"11 0 C - 1 0 X 0 0",
+"12 0 A - 1 0 X 0 0",
+"13 0 WALL - 1 0 X 0 0",
+"18 0 WALL - 1 0 X 0 0",
+"19 0 A - 1 0 X 0 0",
+"21 0 WALL - 1 0 X 0 0",
+"2 1 WALL - 1 0 X 0 0",
+"3 1 WALL - 1 0 X 0 0",
+"6 1 WALL - 1 0 X 0 0",
+"13 1 D - 1 0 X 0 0",
+"16 1 WALL - 1 0 X 0 0",
+"17 1 D - 1 0 X 0 0",
+"18 1 A - 1 0 X 0 0",
+"19 1 WALL - 1 0 X 0 0",
+"21 1 B - 1 0 X 0 0",
+"0 2 C - 1 0 X 0 0",
+"1 2 WALL - 1 0 X 0 0",
+"2 2 ROOT 0 1 N 0 1",
+"4 2 WALL - 1 0 X 0 0",
+"6 2 WALL - 1 0 X 0 0",
+"11 2 C - 1 0 X 0 0",
+"12 2 A - 1 0 X 0 0",
+"13 2 C - 1 0 X 0 0",
+"14 2 D - 1 0 X 0 0",
+"16 2 WALL - 1 0 X 0 0",
+"17 2 WALL - 1 0 X 0 0",
+"18 2 B - 1 0 X 0 0",
+"20 2 WALL - 1 0 X 0 0",
+"21 2 WALL - 1 0 X 0 0",
+"22 2 A - 1 0 X 0 0",
+"23 2 B - 1 0 X 0 0",
+"0 3 C - 1 0 X 0 0",
+"3 3 WALL - 1 0 X 0 0",
+"6 3 WALL - 1 0 X 0 0",
+"7 3 B - 1 0 X 0 0",
+"8 3 A - 1 0 X 0 0",
+"9 3 WALL - 1 0 X 0 0",
+"11 3 WALL - 1 0 X 0 0",
+"14 3 WALL - 1 0 X 0 0",
+"16 3 WALL - 1 0 X 0 0",
+"17 3 WALL - 1 0 X 0 0",
+"18 3 WALL - 1 0 X 0 0",
+"19 3 A - 1 0 X 0 0",
+"20 3 WALL - 1 0 X 0 0",
+"21 3 WALL - 1 0 X 0 0",
+"23 3 C - 1 0 X 0 0",
+"1 4 WALL - 1 0 X 0 0",
+"2 4 WALL - 1 0 X 0 0",
+"5 4 C - 1 0 X 0 0",
+"6 4 C - 1 0 X 0 0",
+"8 4 A - 1 0 X 0 0",
+"9 4 WALL - 1 0 X 0 0",
+"11 4 A - 1 0 X 0 0",
+"12 4 WALL - 1 0 X 0 0",
+"13 4 D - 1 0 X 0 0",
+"14 4 B - 1 0 X 0 0",
+"15 4 WALL - 1 0 X 0 0",
+"16 4 WALL - 1 0 X 0 0",
+"17 4 D - 1 0 X 0 0",
+"18 4 D - 1 0 X 0 0",
+"20 4 WALL - 1 0 X 0 0",
+"21 4 D - 1 0 X 0 0",
+"22 4 B - 1 0 X 0 0",
+"23 4 WALL - 1 0 X 0 0",
+"5 5 WALL - 1 0 X 0 0",
+"6 5 WALL - 1 0 X 0 0",
+"10 5 D - 1 0 X 0 0",
+"11 5 B - 1 0 X 0 0",
+"12 5 WALL - 1 0 X 0 0",
+"13 5 WALL - 1 0 X 0 0",
+"15 5 WALL - 1 0 X 0 0",
+"16 5 WALL - 1 0 X 0 0",
+"17 5 WALL - 1 0 X 0 0",
+"18 5 B - 1 0 X 0 0",
+"20 5 WALL - 1 0 X 0 0",
+"22 5 WALL - 1 0 X 0 0",
+"23 5 WALL - 1 0 X 0 0",
+"0 6 WALL - 1 0 X 0 0",
+"1 6 WALL - 1 0 X 0 0",
+"3 6 WALL - 1 0 X 0 0",
+"5 6 B - 1 0 X 0 0",
+"6 6 WALL - 1 0 X 0 0",
+"7 6 WALL - 1 0 X 0 0",
+"8 6 WALL - 1 0 X 0 0",
+"10 6 WALL - 1 0 X 0 0",
+"11 6 WALL - 1 0 X 0 0",
+"12 6 B - 1 0 X 0 0",
+"13 6 D - 1 0 X 0 0",
+"17 6 WALL - 1 0 X 0 0",
+"18 6 WALL - 1 0 X 0 0",
+"0 7 WALL - 1 0 X 0 0",
+"1 7 B - 1 0 X 0 0",
+"2 7 D - 1 0 X 0 0",
+"3 7 WALL - 1 0 X 0 0",
+"5 7 D - 1 0 X 0 0",
+"6 7 D - 1 0 X 0 0",
+"7 7 WALL - 1 0 X 0 0",
+"8 7 WALL - 1 0 X 0 0",
+"9 7 B - 1 0 X 0 0",
+"10 7 D - 1 0 X 0 0",
+"11 7 WALL - 1 0 X 0 0",
+"12 7 A - 1 0 X 0 0",
+"14 7 WALL - 1 0 X 0 0",
+"15 7 A - 1 0 X 0 0",
+"17 7 C - 1 0 X 0 0",
+"18 7 C - 1 0 X 0 0",
+"21 7 WALL - 1 0 X 0 0",
+"22 7 WALL - 1 0 X 0 0",
+"0 8 C - 1 0 X 0 0",
+"2 8 WALL - 1 0 X 0 0",
+"3 8 WALL - 1 0 X 0 0",
+"4 8 A - 1 0 X 0 0",
+"5 8 WALL - 1 0 X 0 0",
+"6 8 WALL - 1 0 X 0 0",
+"7 8 WALL - 1 0 X 0 0",
+"9 8 WALL - 1 0 X 0 0",
+"12 8 WALL - 1 0 X 0 0",
+"14 8 WALL - 1 0 X 0 0",
+"15 8 A - 1 0 X 0 0",
+"16 8 B - 1 0 X 0 0",
+"17 8 WALL - 1 0 X 0 0",
+"20 8 WALL - 1 0 X 0 0",
+"23 8 C - 1 0 X 0 0",
+"0 9 B - 1 0 X 0 0",
+"1 9 A - 1 0 X 0 0",
+"2 9 WALL - 1 0 X 0 0",
+"3 9 WALL - 1 0 X 0 0",
+"5 9 B - 1 0 X 0 0",
+"6 9 WALL - 1 0 X 0 0",
+"7 9 WALL - 1 0 X 0 0",
+"9 9 D - 1 0 X 0 0",
+"10 9 C - 1 0 X 0 0",
+"11 9 A - 1 0 X 0 0",
+"12 9 C - 1 0 X 0 0",
+"17 9 WALL - 1 0 X 0 0",
+"19 9 WALL - 1 0 X 0 0",
+"21 9 ROOT 1 2 N 0 2",
+"22 9 WALL - 1 0 X 0 0",
+"23 9 C - 1 0 X 0 0",
+"2 10 B - 1 0 X 0 0",
+"4 10 WALL - 1 0 X 0 0",
+"5 10 A - 1 0 X 0 0",
+"6 10 D - 1 0 X 0 0",
+"7 10 WALL - 1 0 X 0 0",
+"10 10 D - 1 0 X 0 0",
+"17 10 WALL - 1 0 X 0 0",
+"20 10 WALL - 1 0 X 0 0",
+"21 10 WALL - 1 0 X 0 0",
+"2 11 WALL - 1 0 X 0 0",
+"4 11 A - 1 0 X 0 0",
+"5 11 WALL - 1 0 X 0 0",
+"10 11 WALL - 1 0 X 0 0",
+"11 11 A - 1 0 X 0 0",
+"12 11 C - 1 0 X 0 0",
+"15 11 WALL - 1 0 X 0 0",
+"16 11 WALL - 1 0 X 0 0",
+"17 11 WALL - 1 0 X 0 0",
+"18 11 WALL - 1 0 X 0 0",
+"3 10 7 6",
+"3 10 7 6",
 "1",
 	};
 

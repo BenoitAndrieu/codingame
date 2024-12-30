@@ -1265,11 +1265,7 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			}
 		}
 
-		if (game.players().at(owner).proteins.at(protein_type_t::A) == 0)
-			continue;
-
 		priority_t grow_basic_priority = priority + 2;
-
 		const xy new_basic_position = *(backtrack.rbegin() + 1);
 
 		// we want harvesters instead of basics
@@ -1285,17 +1281,65 @@ optional<action_t> organ_t::grow(game_t const& game) const
 		if (target_cell.protein.has_value() == true)
 			grow_basic_priority += 2;
 
-		const action_t grow_basic
+		if (game.players().at(owner).proteins.at(protein_type_t::A) > 0)
 		{
-			.priority = grow_basic_priority,
-			.owner = owner,
-			.rootId = rootId,
-			.fromId = game.grid()[backtrack.rbegin()->y][backtrack.rbegin()->x].organ->id,
-			.source = *backtrack.rbegin(),
-			.target = new_basic_position,
-			.organ_type_to_grow = organ_type_t::basic,
-		};
-		candidates.insert({ grow_basic_priority, grow_basic });
+			const action_t grow_basic
+			{
+				.priority = grow_basic_priority,
+				.owner = owner,
+				.rootId = rootId,
+				.fromId = game.grid()[backtrack.rbegin()->y][backtrack.rbegin()->x].organ->id,
+				.source = *backtrack.rbegin(),
+				.target = new_basic_position,
+				.organ_type_to_grow = organ_type_t::basic,
+			};
+
+			candidates.insert({ grow_basic_priority, grow_basic });
+
+			continue;
+		}
+
+		// grow a tentacle instead ?
+		if (game.players().at(owner).proteins.at(protein_type_t::B) > 0
+			&& game.players().at(owner).proteins.at(protein_type_t::C) > 0)
+		{
+			const action_t grow_tentacle
+			{
+				.priority = grow_basic_priority,
+				.owner = owner,
+				.rootId = rootId,
+				.fromId = game.grid()[backtrack.rbegin()->y][backtrack.rbegin()->x].organ->id,
+				.source = *backtrack.rbegin(),
+				.target = new_basic_position,
+				.organ_type_to_grow = organ_type_t::tentacle,
+				.direction = grow_tentacle.target - grow_tentacle.source,
+			};
+
+			candidates.insert({ grow_basic_priority, grow_tentacle });
+
+			continue;
+		}
+
+		// grow an harvester instead ?
+		if (game.players().at(owner).proteins.at(protein_type_t::C) > 0
+			&& game.players().at(owner).proteins.at(protein_type_t::D) > 0)
+		{
+			const action_t grow_harvester
+			{
+				.priority = grow_basic_priority,
+				.owner = owner,
+				.rootId = rootId,
+				.fromId = game.grid()[backtrack.rbegin()->y][backtrack.rbegin()->x].organ->id,
+				.source = *backtrack.rbegin(),
+				.target = new_basic_position,
+				.organ_type_to_grow = organ_type_t::harvester,
+				.direction = grow_harvester.target - grow_harvester.source,
+			};
+
+			candidates.insert({ grow_basic_priority, grow_harvester });
+
+			continue;
+		}
 	}
 
 	for (pair<const priority_t, action_t> const& it : candidates)
