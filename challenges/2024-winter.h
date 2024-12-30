@@ -1263,88 +1263,133 @@ optional<action_t> organ_t::grow(game_t const& game) const
 
 	for (auto const& [it_distance, it_data] : mmap_distance_to_target)
 	{
-		vector<xy> backtrack;
-		backtrack.push_back(it_data.position);
-		assert(bfs[it_data.position.y][it_data.position.x].distance.value());
-		for (xy it_position = it_data.position;
-			bfs[it_position.y][it_position.x].distance.value() > 0;
-			)
-		{
-			vector<xy> neighbours;
-			if (backtrack.size() < 2)
+		auto fn_backtrack = [&](optional<dir_t> start)
 			{
-				add_if_valid(it_position + dir_t::left, game.grid_width(), game.grid_height(), neighbours);
-				add_if_valid(it_position + dir_t::up, game.grid_width(), game.grid_height(), neighbours);
-				add_if_valid(it_position + dir_t::down, game.grid_width(), game.grid_height(), neighbours);
-				add_if_valid(it_position + dir_t::right, game.grid_width(), game.grid_height(), neighbours);
-			}
-			else
-			{
-				// trying to stay in the same direction to favor spore fire
-				const dir_t dir = *backtrack.rbegin() - *(backtrack.rbegin() + 1);
-				if (dir == dir_t::down || dir == dir_t::up)
+				vector<xy> backtrack;
+				backtrack.push_back(it_data.position);
+				assert(bfs[it_data.position.y][it_data.position.x].distance.value());
+				for (xy it_position = it_data.position;
+					bfs[it_position.y][it_position.x].distance.value() > 0;
+					)
 				{
-					add_if_valid(it_position + dir, game.grid_width(), game.grid_height(), neighbours);
-					add_if_valid(it_position + opposite(dir), game.grid_width(), game.grid_height(), neighbours);
-					add_if_valid(it_position + dir_t::left, game.grid_width(), game.grid_height(), neighbours);
-					add_if_valid(it_position + dir_t::right, game.grid_width(), game.grid_height(), neighbours);
+					vector<xy> neighbours;
+					if (backtrack.size() == 1)
+					{
+						if (!start || start == dir_t::left)
+							add_if_valid(it_position + dir_t::left, game.grid_width(), game.grid_height(), neighbours);
+						if (!start || start == dir_t::up)
+							add_if_valid(it_position + dir_t::up, game.grid_width(), game.grid_height(), neighbours);
+						if (!start || start == dir_t::down)
+							add_if_valid(it_position + dir_t::down, game.grid_width(), game.grid_height(), neighbours);
+						if (!start || start == dir_t::right)
+							add_if_valid(it_position + dir_t::right, game.grid_width(), game.grid_height(), neighbours);
+					}
+					else
+					{
+						// trying to stay in the same direction to favor spore fire
+						const dir_t dir = *backtrack.rbegin() - *(backtrack.rbegin() + 1);
+						if (dir == dir_t::down || dir == dir_t::up)
+						{
+							add_if_valid(it_position + dir, game.grid_width(), game.grid_height(), neighbours);
+							add_if_valid(it_position + opposite(dir), game.grid_width(), game.grid_height(), neighbours);
+							add_if_valid(it_position + dir_t::left, game.grid_width(), game.grid_height(), neighbours);
+							add_if_valid(it_position + dir_t::right, game.grid_width(), game.grid_height(), neighbours);
+						}
+						else
+						{
+							add_if_valid(it_position + dir, game.grid_width(), game.grid_height(), neighbours);
+							add_if_valid(it_position + opposite(dir), game.grid_width(), game.grid_height(), neighbours);
+							add_if_valid(it_position + dir_t::down, game.grid_width(), game.grid_height(), neighbours);
+							add_if_valid(it_position + dir_t::up, game.grid_width(), game.grid_height(), neighbours);
+						}
+					}
+
+					distance_t min_distance = numeric_limits<distance_t>::max();
+					xy min_position;
+					for (xy const& it_neighbour : neighbours)
+					{
+						// avoid to go on the same cells over and over
+						if (find(backtrack.crbegin(), backtrack.crend(), it_neighbour) != backtrack.crend())
+							continue;
+
+						cell_t const& it_neighbour_grid = game.grid()[it_neighbour.y][it_neighbour.x];
+						if (it_neighbour_grid.isWall)
+							continue;
+						if (it_neighbour_grid.organ && it_neighbour_grid.organ->owner != owner)
+							continue;
+
+						bfs_cell_t const& bfs_cell = bfs[it_neighbour.y][it_neighbour.x];
+						if (bfs_cell.distance.has_value() == false)
+							continue; // could be an harvested protein
+
+						if (bfs_cell.distance.value() > min_distance)
+							continue;
+
+						if (bfs_cell.distance.value() == min_distance)
+						{
+							cell_t const& it_min_position_grid = game.grid()[min_position.y][min_position.x];
+							if (it_min_position_grid.protein.has_value() == false)
+								continue; // the current minima does not go through a protein, it is better
+
+							[[maybe_unused]] const int breakpoint = 1;
+						}
+
+						min_distance = bfs_cell.distance.value();
+						min_position = it_neighbour;
+					}
+
+					if (min_distance >= numeric_limits<distance_t>::max())
+						return vector<xy>{};
+
+					backtrack.push_back(min_position);
+
+					it_position = min_position;
+					assert(bfs[it_data.position.y][it_data.position.x].distance.value());
 				}
-				else
-				{
-					add_if_valid(it_position + dir, game.grid_width(), game.grid_height(), neighbours);
-					add_if_valid(it_position + opposite(dir), game.grid_width(), game.grid_height(), neighbours);
-					add_if_valid(it_position + dir_t::down, game.grid_width(), game.grid_height(), neighbours);
-					add_if_valid(it_position + dir_t::up, game.grid_width(), game.grid_height(), neighbours);
-				}
-			}
 
-			distance_t min_distance = numeric_limits<distance_t>::max();
-			xy min_position;
-			for (xy const& it_neighbour : neighbours)
-			{
-				// avoid to go on the same cells over and over
-				if (find(backtrack.crbegin(), backtrack.crend(), it_neighbour) != backtrack.crend())
-					continue;
+				return backtrack;
+			};
 
-				cell_t const& it_neighbour_grid = game.grid()[it_neighbour.y][it_neighbour.x];
-				if (it_neighbour_grid.isWall)
-					continue;
-				if (it_neighbour_grid.organ && it_neighbour_grid.organ->owner != owner)
-					continue;
+		const vector<xy> backtrack = fn_backtrack(optional<dir_t>());
 
-				bfs_cell_t const& bfs_cell = bfs[it_neighbour.y][it_neighbour.x];
-				if (bfs_cell.distance.has_value() == false)
-					continue; // could be an harvested protein
-
-				if (bfs_cell.distance.value() > min_distance)
-					continue;
-
-				if (bfs_cell.distance.value() == min_distance)
-				{
-					cell_t const& it_min_position_grid = game.grid()[min_position.y][min_position.x];
-					if (it_min_position_grid.protein.has_value() == false)
-						continue; // the current minima does not go through a protein, it is better
-
-					[[maybe_unused]] const int breakpoint = 1;
-				}
-
-				min_distance = bfs_cell.distance.value();
-				min_position = it_neighbour;
-			}
-
-			if (min_distance >= numeric_limits<distance_t>::max())
-				throw exception();
-
-			backtrack.push_back(min_position);
-
-			it_position = min_position;
-			assert(bfs[it_data.position.y][it_data.position.x].distance.value());
-		}
-
-		if (backtrack.size() <= 1)
-			throw exception();
+		if (backtrack.size() < 2)
+			continue;
 
 		fn_detect_action(backtrack, it_data);
+
+		// we may be missing harvesters or tentacles if target is too near, there could be another path
+		if (backtrack.size() == 2)
+		{
+			const dir_t dir = backtrack[0] - backtrack[1];
+
+			if (dir != dir_t::left)
+			{
+				const vector<xy> left = fn_backtrack(dir_t::left);
+				if (left.size() >= 3)
+					fn_detect_action(left, it_data);
+			}
+
+			if (dir != dir_t::right)
+			{
+				const vector<xy> right = fn_backtrack(dir_t::right);
+				if (right.size() >= 3)
+					fn_detect_action(right, it_data);
+			}
+
+			if (dir != dir_t::up)
+			{
+				const vector<xy> up = fn_backtrack(dir_t::up);
+				if (up.size() >= 3)
+					fn_detect_action(up, it_data);
+			}
+
+			if (dir != dir_t::down)
+			{
+				const vector<xy> down = fn_backtrack(dir_t::down);
+				if (down.size() >= 3)
+					fn_detect_action(down, it_data);
+			}
+		}
 	}
 
 	static xy debug_xy;
