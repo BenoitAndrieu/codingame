@@ -547,11 +547,10 @@ optional<action_t> organ_t::grow(game_t const& game) const
 	};
 
 	vector<vector<bfs_cell_t>> bfs(game.grid().size(), vector<bfs_cell_t>(game.grid()[0].size()));
-	multimap<distance_t, xy> remaining; // the multimap allows to process the nearest cells
-
-	for (pair<const int, player_t> const& it_player : game.players())
+	multimap<distance_t, xy> bfs_queue; // the multimap allows to process the nearest cells
+	for (pair<const id_player_t, player_t> const& it_player : game.players())
 	{
-		for (pair<const int, organ_t> const& it_organ : it_player.second.organs)
+		for (pair<const id_organ_t, organ_t> const& it_organ : it_player.second.organs)
 		{
 			// we can not grow above another organ
 			if (it_organ.second.rootId != id)
@@ -572,60 +571,68 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			// we can grow from any organ
 			bfs[it_organ.second.position.y][it_organ.second.position.x].distance = 0;
 
-			remaining.insert({ 0, it_organ.second.position });
+			bfs_queue.insert({ 0, it_organ.second.position });
 		}
 	}
 
-	while (remaining.empty() == false)
-	{
-		const xy it_position = [&]()
-			{
-				auto const it = remaining.cbegin();
-				const xy position = it->second;
-				remaining.erase(it);
-				return position;
-			}();
+	const vector<vector<bfs_cell_t>> bfs_init_state = bfs;
+	const multimap<distance_t, xy> bfs_queue_init_state = bfs_queue;
 
-		bfs_cell_t& bfs_cell = bfs[it_position.y][it_position.x];
-		if (bfs_cell.visited)
-			continue;
-
-		bfs_cell.visited = true;
-
-		cell_t const& cell = game.grid()[it_position.y][it_position.x];
-		if (cell.isWall == true)
-			continue;
-
-		vector<xy> neighbours;
-		add_if_valid(it_position + dir_t::right, game.grid_width(), game.grid_height(), neighbours);
-		add_if_valid(it_position + dir_t::up, game.grid_width(), game.grid_height(), neighbours);
-		add_if_valid(it_position + dir_t::down, game.grid_width(), game.grid_height(), neighbours);
-		add_if_valid(it_position + dir_t::left, game.grid_width(), game.grid_height(), neighbours);
-		for (xy const& it : neighbours)
+	auto fn_compute_bfs = [&game](id_player_t player_id, auto& bfs, auto& bfs_queue)
 		{
-			cell_t const& it_neighbour_grid = game.grid()[it.y][it.x];
-			if (it_neighbour_grid.isWall)
-				continue;
-
-			if (game.players().at(owner).harvesters_targets.contains(it) == true)
-				continue; // target should not be harvested by the root's player
-
-			bfs_cell_t& it_neighbour = bfs[it.y][it.x];
-			if (it_neighbour.distance.has_value() == true)
+			while (bfs_queue.empty() == false)
 			{
-				assert(bfs_cell.distance.has_value());
-				if (it_neighbour.distance.value() <= bfs_cell.distance.value() + 1)
-				{
-					// another cell has already computed a shortest distance
+				const xy it_position = [&]()
+					{
+						auto const it = bfs_queue.cbegin();
+						const xy position = it->second;
+						bfs_queue.erase(it);
+						return position;
+					}();
+
+				bfs_cell_t& bfs_cell = bfs[it_position.y][it_position.x];
+				if (bfs_cell.visited)
 					continue;
+
+				bfs_cell.visited = true;
+
+				cell_t const& cell = game.grid()[it_position.y][it_position.x];
+				if (cell.isWall == true)
+					continue;
+
+				vector<xy> neighbours;
+				add_if_valid(it_position + dir_t::right, game.grid_width(), game.grid_height(), neighbours);
+				add_if_valid(it_position + dir_t::up, game.grid_width(), game.grid_height(), neighbours);
+				add_if_valid(it_position + dir_t::down, game.grid_width(), game.grid_height(), neighbours);
+				add_if_valid(it_position + dir_t::left, game.grid_width(), game.grid_height(), neighbours);
+				for (xy const& it : neighbours)
+				{
+					cell_t const& it_neighbour_grid = game.grid()[it.y][it.x];
+					if (it_neighbour_grid.isWall)
+						continue;
+
+					if (game.players().at(player_id).harvesters_targets.contains(it) == true)
+						continue; // target should not be harvested by the root's player
+
+					bfs_cell_t& it_neighbour = bfs[it.y][it.x];
+					if (it_neighbour.distance.has_value() == true)
+					{
+						assert(bfs_cell.distance.has_value());
+						if (it_neighbour.distance.value() <= bfs_cell.distance.value() + 1)
+						{
+							// another cell has already computed a shortest distance
+							continue;
+						}
+					}
+
+					assert(bfs_cell.distance.has_value());
+					it_neighbour.distance = bfs_cell.distance.value() + 1;
+					bfs_queue.insert({ it_neighbour.distance.value(), it });
 				}
 			}
+		};
 
-			assert(bfs_cell.distance.has_value());
-			it_neighbour.distance = bfs_cell.distance.value() + 1;
-			remaining.insert({ it_neighbour.distance.value(), it });
-		}
-	}
+	fn_compute_bfs(owner, bfs, bfs_queue);
 
 	enum class action_type_t
 	{
@@ -665,7 +672,7 @@ optional<action_t> organ_t::grow(game_t const& game) const
 
 	// detect if the organ has harvesters on each protein
 	set<protein_type_t> harvesting;
-	for (pair<const int, organ_t> const& it_organ : game.players().at(owner).organs)
+	for (pair<const id_organ_t, organ_t> const& it_organ : game.players().at(owner).organs)
 	{
 		if (it_organ.second.rootId != id)
 			continue;
@@ -686,12 +693,12 @@ optional<action_t> organ_t::grow(game_t const& game) const
 
 	// finds the organs to attack
 	multimap<distance_t, data_t> mmap_distance_to_enemy;
-	for (pair<const int, player_t> const& it_player : game.players())
+	for (pair<const id_player_t, player_t> const& it_player : game.players())
 	{
 		if (it_player.first == owner)
 			continue;
 
-		for (pair<const int, organ_t> const& it_organ : it_player.second.organs)
+		for (pair<const id_organ_t, organ_t> const& it_organ : it_player.second.organs)
 		{
 			bfs_cell_t const& bfs_cell = bfs[it_organ.second.position.y][it_organ.second.position.x];
 			if (bfs_cell.distance.has_value() == false)
@@ -748,12 +755,12 @@ optional<action_t> organ_t::grow(game_t const& game) const
 		|| enemy_is_near)
 	{
 		// finds the organs to attack
-		for (pair<const int, player_t> const& it_player : game.players())
+		for (pair<const id_player_t, player_t> const& it_player : game.players())
 		{
 			if (it_player.first == owner)
 				continue;
 
-			for (pair<const int, organ_t> const& it_organ : it_player.second.organs)
+			for (pair<const id_organ_t, organ_t> const& it_organ : it_player.second.organs)
 			{
 				bfs_cell_t const& bfs_cell = bfs[it_organ.second.position.y][it_organ.second.position.x];
 				if (bfs_cell.distance.has_value() == false)
@@ -1224,18 +1231,18 @@ optional<action_t> organ_t::grow(game_t const& game) const
 		candidates.insert({ grow_basic_priority, grow_basic });
 	}
 
-	for (pair<const int, action_t> const& it : candidates)
+	for (pair<const priority_t, action_t> const& it : candidates)
 		return it.second;
 	return {};
 }
 
 void game_t::update()
 {
-	for (pair<const int, player_t>& it_player : players())
+	for (pair<const id_player_t, player_t>& it_player : players())
 	{
 		it_player.second.harvesters_targets.clear();
 
-		for (pair<const int, organ_t> const& it_organ : it_player.second.organs)
+		for (pair<const id_organ_t, organ_t> const& it_organ : it_player.second.organs)
 		{
 			if (it_organ.second.type != organ_type_t::harvester)
 				continue;
@@ -1248,7 +1255,7 @@ void game_t::update()
 
 void game_t::gather_resources()
 {
-	for (pair<const int, player_t>& it_player : players())
+	for (pair<const id_player_t, player_t>& it_player : players())
 	{
 		for (xy const& it_target : it_player.second.harvesters_targets)
 		{
