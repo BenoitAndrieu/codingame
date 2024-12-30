@@ -784,19 +784,19 @@ optional<action_t> organ_t::grow(game_t const& game) const
 	priority_t current_prio = 2;
 
 	const priority_t grow_tentacle_prio = current_prio;
-	current_prio = 5;
 
+	current_prio = 5;
 	priority_t grow_harvester_A_prio = numeric_limits<priority_t>::max() / 2;
 	priority_t grow_sporer_A_prio = numeric_limits<priority_t>::max() / 2;
 	priority_t grow_root_A_prio = numeric_limits<priority_t>::max() / 2;
 	if (harvesting.contains(protein_type_t::A) == false)
 	{
-		grow_harvester_A_prio = current_prio;
-		grow_root_A_prio = current_prio;
-		grow_sporer_A_prio = current_prio;
+		grow_harvester_A_prio = current_prio++;
+		grow_root_A_prio = current_prio++;
+		grow_sporer_A_prio = current_prio++;
 	}
-	current_prio += 5;
 
+	current_prio = 5;
 	priority_t grow_harvester_B_prio = numeric_limits<priority_t>::max() / 2;
 	priority_t grow_sporer_B_prio = numeric_limits<priority_t>::max() / 2;
 	priority_t grow_root_B_prio = numeric_limits<priority_t>::max() / 2;
@@ -806,8 +806,8 @@ optional<action_t> organ_t::grow(game_t const& game) const
 		grow_root_B_prio = current_prio++;
 		grow_sporer_B_prio = current_prio++;
 	}
-	current_prio += 5;
 
+	current_prio = 5;
 	priority_t grow_harvester_C_prio = numeric_limits<priority_t>::max() / 2;
 	priority_t grow_sporer_C_prio = numeric_limits<priority_t>::max() / 2;
 	priority_t grow_root_C_prio = numeric_limits<priority_t>::max() / 2;
@@ -817,8 +817,8 @@ optional<action_t> organ_t::grow(game_t const& game) const
 		grow_root_C_prio = current_prio++;
 		grow_sporer_C_prio = current_prio++;
 	}
-	current_prio += 5;
 
+	current_prio = 5;
 	priority_t grow_harvester_D_prio = numeric_limits<priority_t>::max() / 2;
 	priority_t grow_sporer_D_prio = numeric_limits<priority_t>::max() / 2;
 	priority_t grow_root_D_prio = numeric_limits<priority_t>::max() / 2;
@@ -828,6 +828,7 @@ optional<action_t> organ_t::grow(game_t const& game) const
 		grow_root_D_prio = current_prio++;
 		grow_sporer_D_prio = current_prio++;
 	}
+
 	current_prio += 5;
 
 	multimap<priority_t, action_t> candidates;
