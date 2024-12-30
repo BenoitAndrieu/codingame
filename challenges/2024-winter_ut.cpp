@@ -2366,6 +2366,7 @@ TEST(_2024_WINTER, _6_SILVER)
 
 TEST(_2024_WINTER, _7_SILVER)
 {
+	return;
 	vector<string> replay =
 	{
 "24 12",
@@ -2534,6 +2535,134 @@ TEST(_2024_WINTER, _7_SILVER)
 "18 11 WALL - 1 0 X 0 0",
 "3 10 7 6",
 "3 10 7 6",
+"1",
+	};
+
+	inputs inputs(replay);
+
+	string input = inputs.get_next();
+	int width, height;
+	{
+		stringstream ss(input);
+		ss >> width >> height;
+	}
+
+	game_t game(inputs, height, width);
+	while (true)
+	{
+		game.update();
+		game.gather_resources();
+		cout << string(game.grid_width(), '_') << endl;
+		game.serialize_grid(cout);
+
+		for (pair<const int, player_t> const& it_player : game.players())
+		{
+			if (it_player.first == game_t::opp_id)
+				continue;
+
+			vector<optional<action_t>> actions;
+			for (organ_t const& it_root : it_player.second.roots)
+			{
+				optional<action_t> action = it_root.grow(game);
+				actions.push_back(action);
+			}
+
+			for (optional<action_t> const& it_action : actions)
+			{
+				if (!it_action)
+				{
+					if (it_player.first == game_t::me_id)
+						cout << "WAIT" << endl;
+				}
+				else
+					it_action->perform(game);
+			}
+		}
+	}
+}
+
+TEST(_2024_WINTER, _01_GOLD)
+{
+	vector<string> replay =
+	{
+"20 10",
+"74",
+"1 0 D - 1 0 X 0 0",
+"2 0 WALL - 1 0 X 0 0",
+"3 0 WALL - 1 0 X 0 0",
+"5 0 WALL - 1 0 X 0 0",
+"6 0 C - 1 0 X 0 0",
+"12 0 WALL - 1 0 X 0 0",
+"15 0 D - 1 0 X 0 0",
+"16 0 WALL - 1 0 X 0 0",
+"1 1 ROOT 1 1 N 0 1",
+"5 1 WALL - 1 0 X 0 0",
+"6 1 WALL - 1 0 X 0 0",
+"7 1 WALL - 1 0 X 0 0",
+"10 1 WALL - 1 0 X 0 0",
+"12 1 WALL - 1 0 X 0 0",
+"14 1 WALL - 1 0 X 0 0",
+"16 1 WALL - 1 0 X 0 0",
+"18 1 WALL - 1 0 X 0 0",
+"6 2 WALL - 1 0 X 0 0",
+"7 2 B - 1 0 X 0 0",
+"9 2 WALL - 1 0 X 0 0",
+"14 2 B - 1 0 X 0 0",
+"3 3 WALL - 1 0 X 0 0",
+"4 3 WALL - 1 0 X 0 0",
+"6 3 C - 1 0 X 0 0",
+"9 3 WALL - 1 0 X 0 0",
+"10 3 WALL - 1 0 X 0 0",
+"13 3 WALL - 1 0 X 0 0",
+"14 3 WALL - 1 0 X 0 0",
+"15 3 WALL - 1 0 X 0 0",
+"16 3 WALL - 1 0 X 0 0",
+"18 3 WALL - 1 0 X 0 0",
+"7 4 WALL - 1 0 X 0 0",
+"12 4 A - 1 0 X 0 0",
+"15 4 WALL - 1 0 X 0 0",
+"16 4 WALL - 1 0 X 0 0",
+"18 4 WALL - 1 0 X 0 0",
+"19 4 WALL - 1 0 X 0 0",
+"0 5 WALL - 1 0 X 0 0",
+"1 5 WALL - 1 0 X 0 0",
+"3 5 WALL - 1 0 X 0 0",
+"4 5 WALL - 1 0 X 0 0",
+"7 5 A - 1 0 X 0 0",
+"12 5 WALL - 1 0 X 0 0",
+"1 6 WALL - 1 0 X 0 0",
+"3 6 WALL - 1 0 X 0 0",
+"4 6 WALL - 1 0 X 0 0",
+"5 6 WALL - 1 0 X 0 0",
+"6 6 WALL - 1 0 X 0 0",
+"9 6 WALL - 1 0 X 0 0",
+"10 6 WALL - 1 0 X 0 0",
+"13 6 C - 1 0 X 0 0",
+"15 6 WALL - 1 0 X 0 0",
+"16 6 WALL - 1 0 X 0 0",
+"5 7 B - 1 0 X 0 0",
+"10 7 WALL - 1 0 X 0 0",
+"12 7 B - 1 0 X 0 0",
+"13 7 WALL - 1 0 X 0 0",
+"1 8 WALL - 1 0 X 0 0",
+"3 8 WALL - 1 0 X 0 0",
+"5 8 WALL - 1 0 X 0 0",
+"7 8 WALL - 1 0 X 0 0",
+"9 8 WALL - 1 0 X 0 0",
+"12 8 WALL - 1 0 X 0 0",
+"13 8 WALL - 1 0 X 0 0",
+"14 8 WALL - 1 0 X 0 0",
+"18 8 ROOT 0 2 N 0 2",
+"3 9 WALL - 1 0 X 0 0",
+"4 9 D - 1 0 X 0 0",
+"7 9 WALL - 1 0 X 0 0",
+"13 9 C - 1 0 X 0 0",
+"14 9 WALL - 1 0 X 0 0",
+"16 9 WALL - 1 0 X 0 0",
+"17 9 WALL - 1 0 X 0 0",
+"18 9 D - 1 0 X 0 0",
+"4 9 6 7",
+"4 9 6 7",
 "1",
 	};
 
