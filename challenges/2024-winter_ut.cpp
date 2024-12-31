@@ -2712,6 +2712,7 @@ TEST(_2024_WINTER, _01_GOLD)
 
 TEST(_2024_WINTER, _02_GOLD)
 {
+	return;
 	vector<string> replay =
 	{
 "24 12",
@@ -2854,6 +2855,192 @@ TEST(_2024_WINTER, _02_GOLD)
 "7 9 10 10",
 "1",
 	};
+
+	inputs inputs(replay);
+
+	string input = inputs.get_next();
+	int width, height;
+	{
+		stringstream ss(input);
+		ss >> width >> height;
+	}
+
+	game_t game(inputs, height, width);
+	while (true)
+	{
+		game.update();
+		game.gather_resources();
+		cout << string(game.grid_width(), '_') << endl;
+		game.serialize_grid(cout);
+
+		for (pair<const int, player_t> const& it_player : game.players())
+		{
+			if (it_player.first == game_t::opp_id)
+				continue;
+
+			vector<optional<action_t>> actions;
+			for (organ_t const& it_root : it_player.second.roots)
+			{
+				optional<action_t> action = it_root.grow(game);
+				actions.push_back(action);
+			}
+
+			for (optional<action_t> const& it_action : actions)
+			{
+				if (!it_action)
+				{
+					if (it_player.first == game_t::me_id)
+						cout << "WAIT" << endl;
+				}
+				else
+					it_action->perform(game);
+			}
+		}
+	}
+}
+
+TEST(_2024_WINTER, _03_GOLD)
+{
+	return;
+	vector<string> replay =
+	{
+		"18 9",
+		"70",
+		"1 0 A -1 0 X 0 0",
+		"5 0 WALL -1 0 X 0 0",
+		"8 0 D -1 0 X 0 0",
+		"1 1 WALL -1 0 X 0 0",
+		"2 1 WALL -1 0 X 0 0",
+		"7 1 A -1 0 X 0 0",
+		"13 1 WALL -1 0 X 0 0",
+		"0 2 D -1 0 X 0 0",
+		"3 2 SPORER 1 13 E 1 1",
+		"7 2 C -1 0 X 0 0",
+		"8 2 WALL -1 0 X 0 0",
+		"15 2 A -1 0 X 0 0",
+		"0 3 HARVESTER 1 11 N 7 1",
+		"1 3 HARVESTER 1 7 S 3 1",
+		"2 3 SPORER 1 3 S 1 1",
+		"3 3 ROOT 1 1 N 0 1",
+		"4 3 SPORER 1 15 E 1 1",
+		"5 3 HARVESTER 1 18 E 15 1",
+		"6 3 B -1 0 X 0 0",
+		"9 3 B -1 0 X 0 0",
+		"12 3 C -1 0 X 0 0",
+		"13 3 WALL -1 0 X 0 0",
+		"15 3 HARVESTER 0 17 N 6 2",
+		"1 4 A -1 0 X 0 0",
+		"2 4 HARVESTER 1 5 E 3 1",
+		"3 4 B -1 0 X 0 0",
+		"5 4 HARVESTER 1 19 E 18 1",
+		"6 4 C -1 0 X 0 0",
+		"7 4 D -1 0 X 0 0",
+		"10 4 D -1 0 X 0 0",
+		"11 4 C -1 0 X 0 0",
+		"12 4 HARVESTER 0 16 N 14 2",
+		"13 4 BASIC 0 14 N 12 2",
+		"14 4 B -1 0 X 0 0",
+		"15 4 HARVESTER 0 6 W 4 2",
+		"16 4 A -1 0 X 0 0",
+		"2 5 HARVESTER 1 9 S 5 1",
+		"4 5 WALL -1 0 X 0 0",
+		"5 5 BASIC 1 21 N 19 1",
+		"6 5 BASIC 1 23 N 21 1",
+		"8 5 B -1 0 X 0 0",
+		"11 5 B -1 0 X 0 0",
+		"12 5 HARVESTER 0 20 W 12 2",
+		"13 5 BASIC 0 12 N 2 2",
+		"14 5 ROOT 0 2 N 0 2",
+		"15 5 BASIC 0 4 N 2 2",
+		"16 5 HARVESTER 0 8 N 4 2",
+		"2 6 A -1 0 X 0 0",
+		"6 6 BASIC 1 25 N 23 1",
+		"9 6 WALL -1 0 X 0 0",
+		"10 6 C -1 0 X 0 0",
+		"12 6 TENTACLE 0 22 W 20 2",
+		"14 6 TENTACLE 0 33 S 32 2",
+		"15 6 TENTACLE 0 32 W 10 2",
+		"16 6 HARVESTER 0 10 E 8 2",
+		"17 6 D -1 0 X 0 0",
+		"4 7 WALL -1 0 X 0 0",
+		"6 7 BASIC 1 27 N 25 1",
+		"7 7 BASIC 1 29 N 27 1",
+		"8 7 BASIC 1 31 N 29 1",
+		"9 7 TENTACLE 1 34 E 31 1",
+		"10 7 TENTACLE 1 36 E 34 1",
+		"11 7 TENTACLE 1 38 N 36 1",
+		"14 7 TENTACLE 0 35 S 33 2",
+		"15 7 WALL -1 0 X 0 0",
+		"16 7 WALL -1 0 X 0 0",
+		"9 8 D -1 0 X 0 0",
+		"12 8 WALL -1 0 X 0 0",
+		"14 8 TENTACLE 0 37 E 35 2",
+		"16 8 A -1 0 X 0 0",
+		"35 30 13 12",
+		"36 29 14 17",
+		"1",
+	};
+
+	inputs inputs(replay);
+
+	string input = inputs.get_next();
+	int width, height;
+	{
+		stringstream ss(input);
+		ss >> width >> height;
+	}
+
+	game_t game(inputs, height, width);
+	while (true)
+	{
+		game.update();
+		game.gather_resources();
+		cout << string(game.grid_width(), '_') << endl;
+		game.serialize_grid(cout);
+
+		for (pair<const int, player_t> const& it_player : game.players())
+		{
+			if (it_player.first == game_t::opp_id)
+				continue;
+
+			vector<optional<action_t>> actions;
+			for (organ_t const& it_root : it_player.second.roots)
+			{
+				optional<action_t> action = it_root.grow(game);
+				actions.push_back(action);
+			}
+
+			for (optional<action_t> const& it_action : actions)
+			{
+				if (!it_action)
+				{
+					if (it_player.first == game_t::me_id)
+						cout << "WAIT" << endl;
+				}
+				else
+					it_action->perform(game);
+			}
+		}
+	}
+}
+
+TEST(_2024_WINTER, _04_GOLD)
+{
+	vector<string> replay =
+	{
+"24 12","110",
+"0 0 WALL -1 0 X 0 0","1 0 C -1 0 X 0 0","2 0 HARVESTER 0 16 W 3 1","4 0 WALL -1 0 X 0 0","6 0 A -1 0 X 0 0","9 0 C -1 0 X 0 0","13 0 B -1 0 X 0 0","17 0 A -1 0 X 0 0","18 0 A -1 0 X 0 0","23 0 B -1 0 X 0 0",
+"0 1 BASIC 0 5 W 1 1","1 1 ROOT 0 1 N 0 1","2 1 HARVESTER 0 3 N 1 1","3 1 TENTACLE 0 26 E 3 1","4 1 TENTACLE 0 28 E 26 1","5 1 TENTACLE 0 30 E 28 1","6 1 HARVESTER 0 32 N 30 1","7 1 TENTACLE 0 34 E 32 1","0 2 HARVESTER 0 7 E 5 1","1 2 C -1 0 X 0 0",
+"2 2 HARVESTER 0 9 S 3 1","6 2 TENTACLE 0 72 S 32 1","7 2 TENTACLE 0 69 S 34 1","18 2 D -1 0 X 0 0","20 2 D -1 0 X 0 0","23 2 D -1 0 X 0 0","0 3 B -1 0 X 0 0","1 3 HARVESTER 0 22 W 11 1","2 3 HARVESTER 0 11 S 9 1","3 3 HARVESTER 0 13 E 11 1",
+"4 3 C -1 0 X 0 0","6 3 TENTACLE 0 73 E 72 1","12 3 A -1 0 X 0 0","15 3 C -1 0 X 0 0","19 3 D -1 0 X 0 0","20 3 A -1 0 X 0 0","21 3 HARVESTER 1 25 W 23 2","1 4 B -1 0 X 0 0","2 4 HARVESTER 0 20 W 11 1","3 4 HARVESTER 0 18 E 13 1",
+"4 4 D -1 0 X 0 0","6 4 TENTACLE 0 74 S 73 1","7 4 TENTACLE 0 75 E 74 1","16 4 A -1 0 X 0 0","19 4 D -1 0 X 0 0","20 4 B -1 0 X 0 0","21 4 HARVESTER 1 23 E 21 2","22 4 D -1 0 X 0 0","3 5 TENTACLE 0 24 S 18 1","5 5 WALL -1 0 X 0 0",
+"7 5 TENTACLE 0 76 E 75 1","17 5 BASIC 1 29 N 27 2","18 5 BASIC 1 27 N 19 2","19 5 HARVESTER 1 19 N 17 2","20 5 HARVESTER 1 17 N 15 2","21 5 SPORER 1 21 N 17 2","3 6 HARVESTER 0 39 S 24 1","7 6 TENTACLE 0 77 E 76 1","8 6 TENTACLE 0 78 N 77 1","14 6 BASIC 1 37 N 35 2",
+"15 6 BASIC 1 35 N 33 2","16 6 BASIC 1 33 N 31 2","17 6 BASIC 1 31 N 29 2","18 6 WALL -1 0 X 0 0","20 6 BASIC 1 15 N 14 2","1 7 D -1 0 X 0 0","2 7 HARVESTER 0 43 W 41 1","3 7 HARVESTER 0 41 E 39 1","4 7 D -1 0 X 0 0","7 7 A -1 0 X 0 0",
+"8 7 TENTACLE 0 79 N 78 1","9 7 TENTACLE 0 80 N 79 1","10 7 TENTACLE 0 82 N 80 1","11 7 TENTACLE 0 84 N 82 1","12 7 TENTACLE 0 85 N 84 1","13 7 TENTACLE 0 87 N 85 1","19 7 D -1 0 X 0 0","20 7 HARVESTER 1 14 W 12 2","21 7 C -1 0 X 0 0","22 7 B -1 0 X 0 0",
+"3 8 A -1 0 X 0 0","4 8 D -1 0 X 0 0","8 8 C -1 0 X 0 0","9 8 HARVESTER 0 81 W 80 1","10 8 HARVESTER 0 83 E 82 1","11 8 A -1 0 X 0 0","12 8 TENTACLE 0 86 S 85 1","19 8 C -1 0 X 0 0","20 8 HARVESTER 1 12 W 8 2","21 8 HARVESTER 1 8 N 6 2",
+"22 8 HARVESTER 1 10 N 8 2","23 8 B -1 0 X 0 0","0 9 D -1 0 X 0 0","3 9 D -1 0 X 0 0","5 9 D -1 0 X 0 0","21 9 HARVESTER 1 6 E 4 2","22 9 C -1 0 X 0 0","14 10 C -1 0 X 0 0","21 10 HARVESTER 1 4 S 2 2","22 10 ROOT 1 2 N 0 2",
+"0 11 B -1 0 X 0 0","5 11 A -1 0 X 0 0","6 11 A -1 0 X 0 0","10 11 B -1 0 X 0 0","14 11 C -1 0 X 0 0","17 11 A -1 0 X 0 0","19 11 WALL -1 0 X 0 0","21 11 B -1 0 X 0 0","22 11 C -1 0 X 0 0","23 11 WALL -1 0 X 0 0",
+"38 147 136 129","55 77 132 99","1", };
 
 	inputs inputs(replay);
 

@@ -256,7 +256,12 @@ public:
 			getline(cin, input);
 
 			if (debug)
-				cerr << input << endl;
+			{
+				static int line_index = 1;
+				cerr << "\"" << input << "\",";
+				if (line_index++ % 10 == 0)
+					cerr << endl;
+			}
 
 			return input;
 		}
@@ -538,40 +543,58 @@ using score_t = int;
 
 optional<action_t> organ_t::grow(game_t const& game) const
 {
-	map<score_t, action_t> actions;
-
 	struct bfs_cell_t
 	{
-		bool visited{};
+		bool visitable = true;
+		bool visited = false;
 		optional<distance_t> distance;
 	};
 
 	vector<vector<bfs_cell_t>> bfs(game.grid().size(), vector<bfs_cell_t>(game.grid()[0].size()));
+
+	for (int y = 0; y < game.grid().size();++y)
+	{
+		for (int x = 0; x < game.grid()[y].size(); ++x)
+		{
+			cell_t const& it_cell = game.grid()[y][x];
+			if (it_cell.isWall == false)
+				continue;
+			bfs[y][x].visitable = false;
+		}
+	}
+
 	multimap<distance_t, xy> bfs_queue; // the multimap allows to process the nearest cells
 	for (pair<const id_player_t, player_t> const& it_player : game.players())
 	{
 		for (pair<const id_organ_t, organ_t> const& it_organ : it_player.second.organs)
 		{
-			// we can not grow above another organ
-			if (it_organ.second.rootId != id)
+			if (it_organ.second.owner == owner)
 			{
-				bfs[it_organ.second.position.y][it_organ.second.position.x].visited = true;
+				if (it_organ.second.rootId != id)
+				{
+					// we can not grow above another organ
+					bfs[it_organ.second.position.y][it_organ.second.position.x].visitable = false;
 
+					continue;
+				}
+
+				// we can grow from any organ from the current root
+				bfs[it_organ.second.position.y][it_organ.second.position.x].distance = 0;
+
+				bfs_queue.insert({ 0, it_organ.second.position });
+			}
+			else if (it_organ.second.rootId != id)
+			{
 				// a tentacle blocks growing on the targeted cell (TODO but a spore could fire) (TODO could be interesting to have defensive tentacles)
 				if (it_organ.second.type == organ_type_t::tentacle)
 				{
 					const auto tentacle_target = it_organ.second.position + it_organ.second.direction.value();
 					if (is_valid(tentacle_target, game.grid_width(), game.grid_height()))
-						bfs[tentacle_target.y][tentacle_target.x].visited = true;
+						bfs[tentacle_target.y][tentacle_target.x].visitable = false;
 				}
 
 				continue;
 			}
-
-			// we can grow from any organ
-			bfs[it_organ.second.position.y][it_organ.second.position.x].distance = 0;
-
-			bfs_queue.insert({ 0, it_organ.second.position });
 		}
 	}
 
@@ -592,6 +615,8 @@ optional<action_t> organ_t::grow(game_t const& game) const
 
 				bfs_cell_t& bfs_cell = _bfs[it_position.y][it_position.x];
 				if (bfs_cell.visited)
+					continue;
+				if (bfs_cell.visitable == false)
 					continue;
 
 				bfs_cell.visited = true;
@@ -615,6 +640,9 @@ optional<action_t> organ_t::grow(game_t const& game) const
 						continue; // target should not be harvested by the root's player
 
 					bfs_cell_t& it_neighbour = _bfs[it.y][it.x];
+					if (it_neighbour.visitable == false)
+						continue;
+
 					if (it_neighbour.distance.has_value() == true)
 					{
 						assert(bfs_cell.distance.has_value());
@@ -657,6 +685,8 @@ optional<action_t> organ_t::grow(game_t const& game) const
 				continue; // target should not be harvested by the player
 
 			bfs_cell_t const& bfs_cell = bfs[it_protein_target.y][it_protein_target.x];
+			if (bfs_cell.visited == false)
+				continue;
 			if (bfs_cell.distance.has_value() == false)
 				continue;
 
@@ -701,6 +731,8 @@ optional<action_t> organ_t::grow(game_t const& game) const
 		for (pair<const id_organ_t, organ_t> const& it_organ : it_player.second.organs)
 		{
 			bfs_cell_t const& bfs_cell = bfs[it_organ.second.position.y][it_organ.second.position.x];
+			if (bfs_cell.visited == false)
+				continue;
 			if (bfs_cell.distance.has_value() == false)
 				continue;
 
@@ -727,6 +759,8 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			for (int x = 0; x < game.grid()[y].size(); ++x)
 			{
 				bfs_cell_t const& bfs_cell = bfs[y][x];
+				if (bfs_cell.visited == false)
+					continue;
 				if (bfs_cell.distance.has_value() == false)
 					continue;
 
@@ -763,6 +797,8 @@ optional<action_t> organ_t::grow(game_t const& game) const
 			for (pair<const id_organ_t, organ_t> const& it_organ : it_player.second.organs)
 			{
 				bfs_cell_t const& bfs_cell = bfs[it_organ.second.position.y][it_organ.second.position.x];
+				if (bfs_cell.visited == false)
+					continue;
 				if (bfs_cell.distance.has_value() == false)
 					continue;
 
@@ -865,6 +901,20 @@ optional<action_t> organ_t::grow(game_t const& game) const
 
 					fn_compute_bfs(bfs_harvester, bfs_queue_harvester, harvesters_targets);
 
+					set<xy> reachable_proteins_before;
+					for (pair<const protein_type_t, vector<xy>> const& it : game.proteins())
+					{
+						for (xy it_protein_position : it.second)
+						{
+							bfs_cell_t const& bfs_cell = bfs[it_protein_position.y][it_protein_position.x];
+							if (bfs_cell.visited == false)
+								continue;
+							if (bfs_cell.distance.has_value() == false)
+								continue;
+							reachable_proteins_before.insert(it_protein_position);
+						}
+					}
+
 					vector<xy> positions_to_check = [&]()
 						{
 							vector<xy> positions;
@@ -887,6 +937,8 @@ optional<action_t> organ_t::grow(game_t const& game) const
 								bfs_cell_t const& bfs_cell_harvester = bfs_harvester[it_position.y][it_position.x];
 								bfs_cell_t const& bfs_cell = bfs[it_position.y][it_position.x];
 
+								if (bfs_cell.visited == false)
+									continue;
 								if (bfs_cell.distance.has_value() == false)
 									continue;
 								if (bfs_cell.distance.value() == 0)
@@ -899,6 +951,22 @@ optional<action_t> organ_t::grow(game_t const& game) const
 
 							return false;
 						}();
+
+					set<xy> reachable_proteins_after;
+					for (pair<const protein_type_t, vector<xy>> const& it : game.proteins())
+					{
+						for (xy it_protein_position : it.second)
+						{
+							bfs_cell_t const& bfs_cell = bfs_harvester[it_protein_position.y][it_protein_position.x];
+							if (bfs_cell.visited == false)
+								continue;
+							if (bfs_cell.distance.has_value() == false)
+								continue;
+							reachable_proteins_after.insert(it_protein_position);
+						}
+					}
+
+					blocking = reachable_proteins_after.size() + 1 != reachable_proteins_before.size();
 
 					if (blocking == true)
 					{
@@ -1320,6 +1388,8 @@ optional<action_t> organ_t::grow(game_t const& game) const
 							continue;
 
 						bfs_cell_t const& bfs_cell = bfs[it_neighbour.y][it_neighbour.x];
+						if (bfs_cell.visited == false)
+							continue;
 						if (bfs_cell.distance.has_value() == false)
 							continue; // could be an harvested protein
 
